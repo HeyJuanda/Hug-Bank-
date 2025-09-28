@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="shortcut icon" href="bank.png" />
     <title>HUG Bank - Tu Banco Digital</title>
-    <!-- Carga de Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         :root {
@@ -50,14 +49,65 @@
             border-radius: 0.75rem 0.75rem 0 0;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
+        /* Estilos para el modal/overlay */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border-radius: 0.5rem;
+            width: 80%;
+            max-width: 400px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .close-btn {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .close-btn:hover,
+        .close-btn:focus {
+            color: #000;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .star-rating label {
+            font-size: 2rem;
+            color: #ccc;
+            cursor: pointer;
+        }
+        .star-rating input:checked ~ label {
+            color: #ffc107;
+        }
+        .star-rating input {
+            display: none;
+        }
+        .star-rating {
+            direction: rtl;
+            display: inline-block;
+        }
+        .star-rating label:hover,
+        .star-rating label:hover ~ label {
+            color: #ffc107;
+        }
+
     </style>
 </head>
 <body class="min-h-screen flex items-start justify-center p-4 md:p-8">
 
-    <!-- Contenedor principal -->
     <div id="app" class="w-full max-w-5xl">
         
-        <!-- Módulo de Autenticación -->
         <div id="auth-view" class="bg-card p-6 md:p-8 max-w-md mx-auto mt-16">
             <h2 class="text-2xl font-bold mb-4" id="auth-heading">Iniciar Sesión</h2>
             <form id="auth-form" class="space-y-4">
@@ -84,10 +134,8 @@
             </div>
         </div>
 
-        <!-- Módulo del Panel de Control (Dashboard) -->
         <div id="dashboard-view" class="hidden bg-card p-0">
             
-            <!-- Header (Nombre, Botones de Acción) -->
             <div class="header-bar flex flex-col md:flex-row justify-between items-start md:items-center space-y-3 md:space-y-0">
                 <div class="flex-shrink-0">
                     <h1 class="text-2xl font-extrabold">
@@ -96,9 +144,9 @@
                     </h1>
                     <p class="text-sm font-medium mt-1">Bienvenido, <span id="user-name-display" class="font-bold">Usuario</span></p>
                     <p class="text-xs text-blue-200 mt-0 break-all">ID: <span id="user-id-display">...</span></p>
+                    <p class="text-xs text-blue-200 mt-0">Crédito: <span id="credit-score-display" class="font-bold text-white">N/A</span></p>
                 </div>
 
-                <!-- Botones de acción -->
                 <div class="flex flex-row space-x-4 w-full md:w-auto">
                     <button id="show-transfer-btn" class="flex-1 py-2 px-4 rounded-full text-md font-semibold text-white btn-primary">
                         Enviar Dinero
@@ -109,19 +157,15 @@
                 </div>
             </div>
 
-            <!-- Contenido Principal (Dashboard Body) -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 md:p-8">
                 
-                <!-- Columna Izquierda: Saldo y Deudas -->
                 <div class="lg:col-span-1 space-y-6">
                     
-                    <!-- Tarjeta de Saldo -->
                     <div class="bg-blue-50 p-6 rounded-xl border border-blue-200 text-center">
                         <p class="text-sm text-blue-600">Saldo actual</p>
                         <h3 class="text-4xl font-extrabold mt-1 text-hug-text-color" id="balance-display">$0.00</h3>
                     </div>
 
-                    <!-- Deudas Pendientes/Ofertas de Préstamo -->
                     <div class="bg-card p-5 border border-gray-100">
                         <h3 class="text-xl font-bold mb-4">Deudas y Ofertas</h3>
                         <div id="debts-list" class="space-y-4">
@@ -130,7 +174,6 @@
                     </div>
                 </div>
 
-                <!-- Columna Derecha: Historial Completo -->
                 <div class="lg:col-span-2">
                     <div class="bg-card p-5 border border-gray-100 h-full">
                         <h3 class="text-xl font-bold mb-4">Historial Completo</h3>
@@ -143,7 +186,6 @@
             </div>
         </div>
 
-        <!-- Módulo de Transferencia/Préstamo -->
         <div id="transfer-view" class="hidden bg-card p-6 md:p-8 max-w-md mx-auto mt-16">
             <h2 class="text-2xl font-bold mb-4">Enviar o Prestar</h2>
 
@@ -184,16 +226,37 @@
             </button>
         </div>
 
-        <!-- Mensajes de Estado (Éxito/Error) -->
         <div id="message-box" class="mt-4 p-4 rounded-lg text-sm hidden" role="alert"></div>
 
     </div>
-
-    <!-- Carga de Firebase SDKs -->
+    
+    <div id="score-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <h3 class="text-xl font-bold mb-4">Puntuar Deudor</h3>
+            <p class="mb-4">Califica el comportamiento de pago de <span id="score-modal-recipient-name" class="font-semibold"></span> (ID: <span id="score-modal-recipient-id" class="text-sm"></span>)</p>
+            
+            <form id="score-form" data-loan-doc-id="" data-recipient-id="">
+                 <div class="flex justify-center mb-6">
+                    <div class="star-rating">
+                        <input type="radio" id="star5" name="rating" value="5" required /><label for="star5" title="5 estrellas">★</label>
+                        <input type="radio" id="star4" name="rating" value="4" /><label for="star4" title="4 estrellas">★</label>
+                        <input type="radio" id="star3" name="rating" value="3" /><label for="star3" title="3 estrellas">★</label>
+                        <input type="radio" id="star2" name="rating" value="2" /><label for="star2" title="2 estrellas">★</label>
+                        <input type="radio" id="star1" name="rating" value="1" /><label for="star1" title="1 estrella">★</label>
+                    </div>
+                 </div>
+                <button type="submit" class="w-full py-2 px-4 rounded-full text-md font-semibold text-white btn-primary">
+                    Enviar Puntuación
+                </button>
+            </form>
+        </div>
+    </div>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, updateDoc, runTransaction, collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // Importa 'getDocs' para ejecutar queries correctamente (ERROR CORREGIDO)
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, runTransaction, collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, where, arrayUnion, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- CONFIGURACIÓN E INICIALIZACIÓN DE FIREBASE ---
         const demoFirebaseConfig = {
@@ -229,7 +292,16 @@
         const transactionTypeSelect = document.getElementById('transaction-type');
         const interestRateField = document.getElementById('interest-rate-field');
         const transactionsList = document.getElementById('transactions-list');
-        const debtsList = document.getElementById('debts-list'); // NUEVA LISTA
+        const debtsList = document.getElementById('debts-list'); 
+        const creditScoreDisplay = document.getElementById('credit-score-display'); 
+
+        // Referencias del Modal de Puntuación
+        const scoreModal = document.getElementById('score-modal');
+        const closeBtn = document.querySelector('.close-btn');
+        const scoreForm = document.getElementById('score-form');
+        const scoreModalRecipientName = document.getElementById('score-modal-recipient-name');
+        const scoreModalRecipientId = document.getElementById('score-modal-recipient-id');
+
 
         let isRegister = false;
 
@@ -255,6 +327,40 @@
             Object.values(views).forEach(view => view.classList.add('hidden'));
             views[target].classList.remove('hidden');
         }
+
+        // --- LÓGICA DEL MODAL DE PUNTUACIÓN ---
+        closeBtn.onclick = () => { scoreModal.style.display = 'none'; };
+        window.onclick = (event) => {
+            if (event.target === scoreModal) {
+                scoreModal.style.display = 'none';
+            }
+        };
+
+        scoreForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const rating = parseInt(document.querySelector('input[name="rating"]:checked').value);
+            const loanDocId = scoreForm.getAttribute('data-loan-doc-id');
+            const recipientId = scoreForm.getAttribute('data-recipient-id');
+            
+            try {
+                // 1. Se puntúa la deuda y el deudor
+                await saveCreditScore(recipientId, rating);
+                // 2. Se marca la transacción de prestamista como puntuado para no volver a salir el botón.
+                await updateDoc(doc(db, `artifacts/${appId}/users/${currentUser.uid}/transactions/${loanDocId}`), { 
+                    scoreGiven: true, 
+                    score: rating 
+                });
+                
+                showMessage('Puntuación enviada con éxito.', 'success');
+                scoreModal.style.display = 'none';
+                // Recargar el saldo y las transacciones para actualizar la UI
+                loadBalance(currentUser.uid);
+                listenToTransactions(currentUser.uid); // Forzar recarga de transacciones
+            } catch (error) {
+                console.error("Error al enviar puntuación:", error);
+                showMessage(`Error al enviar puntuación: ${error.message}`, 'error');
+            }
+        });
 
         // --- MANEJO DE VISTAS Y EVENTOS ---
         toggleAuthButton.addEventListener('click', () => {
@@ -291,10 +397,10 @@
                     await updateProfile(userCredential.user, { displayName: name });
                     
                     const userAccountRef = doc(db, `artifacts/${appId}/users/${userCredential.user.uid}/account/data`);
-                    // Saldo inicial de $1000
-                    await setDoc(userAccountRef, { balance: 0.00, name: name, email: email });
+                    // Saldo inicial de $0.00 e inicialización del Credit Score
+                    await setDoc(userAccountRef, { balance: 0.00, name: name, email: email, creditScore: { average: 5.0, count: 0 } });
                     
-                    showMessage('Registro exitoso.', 'success');
+                    showMessage('Registro exitoso. Saldo inicial: $0.00', 'success');
                 } else {
                     await signInWithEmailAndPassword(auth, email, password);
                     showMessage('Inicio de sesión exitoso.', 'success');
@@ -325,6 +431,7 @@
                 document.getElementById('user-id-display').textContent = user.uid;
                 document.getElementById('user-name-display').textContent = user.displayName || 'Usuario';
                 loadBalance(user.uid);
+                loadCreditScore(user.uid); // Cargar puntuación de crédito
                 listenToTransactions(user.uid);
                 switchView('dashboard');
             } else {
@@ -348,11 +455,12 @@
                 const userAccountRef = doc(db, `artifacts/${appId}/users/${userId}/account/data`);
                 const docSnap = await getDoc(userAccountRef);
                 if (docSnap.exists()) {
-                    const balance = docSnap.data().balance;
+                    const data = docSnap.data();
+                    const balance = data.balance;
                     balanceDisplay.textContent = `$${balance.toFixed(2)}`;
                 } else {
-                    // Inicializar cuenta si no existe (aunque debería existir después del registro/auth)
-                    await setDoc(userAccountRef, { balance: 0.00, name: currentUser.displayName || 'Anónimo', email: currentUser.email || 'N/A' });
+                    // Inicializar cuenta si no existe (debería existir después del registro/auth)
+                    await setDoc(userAccountRef, { balance: 0.00, name: currentUser.displayName || 'Anónimo', email: currentUser.email || 'N/A', creditScore: { average: 5.0, count: 0 } });
                     balanceDisplay.textContent = '$0.00';
                 }
             } catch (error) {
@@ -361,11 +469,145 @@
             }
         }
         
+        async function loadCreditScore(userId) {
+             if (!userId) return;
+             try {
+                const userAccountRef = doc(db, `artifacts/${appId}/users/${userId}/account/data`);
+                const docSnap = await getDoc(userAccountRef);
+                if (docSnap.exists() && docSnap.data().creditScore) {
+                    const score = docSnap.data().creditScore;
+                    const rating = score.average.toFixed(1);
+                    creditScoreDisplay.textContent = `${rating} ★ (${score.count})`;
+                } else {
+                    creditScoreDisplay.textContent = '5.0 ★ (0)';
+                }
+            } catch (error) {
+                console.error("Error al cargar la puntuación de crédito:", error);
+                creditScoreDisplay.textContent = 'Error';
+            }
+        }
+
+        async function getAccountData(userId) {
+             const userAccountRef = doc(db, `artifacts/${appId}/users/${userId}/account/data`);
+             const docSnap = await getDoc(userAccountRef);
+             if (docSnap.exists()) return docSnap.data();
+             return null;
+        }
+
         async function createTransaction(userId, transactionData) {
             const transactionsRef = collection(db, `artifacts/${appId}/users/${userId}/transactions`);
             return await addDoc(transactionsRef, { ...transactionData, timestamp: serverTimestamp() });
         }
         
+        // --- FUNCIÓN ADICIONAL: Cancelar Préstamo por Prestamista ---
+        async function cancelLoanByLender(lenderTransactionId, recipientId) {
+            if (!currentUser) return;
+            const lenderId = currentUser.uid;
+            
+            // 1. Encontrar el documento 'loan-sent' del prestamista
+            const lenderDocRef = doc(db, `artifacts/${appId}/users/${lenderId}/transactions/${lenderTransactionId}`);
+            const lenderDocSnap = await getDoc(lenderDocRef);
+            if (!lenderDocSnap.exists() || lenderDocSnap.data().status !== 'completed') {
+                throw new Error("Transacción del prestamista no válida o no completada.");
+            }
+            const loanData = lenderDocSnap.data();
+            
+            // 2. Buscar el documento 'loan-debt' correspondiente del deudor.
+            // Buscamos la DEUDA PENDIENTE que tiene como referencia al loan-sent
+            const debtQuery = query(
+                collection(db, `artifacts/${appId}/users/${recipientId}/transactions`),
+                where('type', '==', 'loan-debt'),
+                where('senderTransactionId', '==', lenderTransactionId),
+                where('status', '==', 'pending')
+            );
+            // Ejecutamos la consulta (CORRECCIÓN: Usar getDocs en un Query)
+            const debtSnapshot = await getDocs(debtQuery);
+            const debtDoc = debtSnapshot.docs.length > 0 ? debtSnapshot.docs[0] : null;
+            const debtDocRef = debtDoc ? doc(db, `artifacts/${appId}/users/${recipientId}/transactions/${debtDoc.id}`) : null;
+
+            // 3. Iniciar Transacción
+            try {
+                await runTransaction(db, async (transaction) => {
+                    // Monto total del préstamo
+                    const amountToPay = loanData.originalAmount * (1 + loanData.interestRate / 100);
+
+                    // 3.1. Marcar el 'loan-sent' del prestamista como pagado (completed-paid)
+                    transaction.update(lenderDocRef, { status: 'completed-paid', paidAmount: amountToPay, paidDate: serverTimestamp() });
+                    
+                    // 3.2. Marcar el 'loan-debt' del deudor como pagado, si existe.
+                    if (debtDocRef) {
+                        transaction.update(debtDocRef, { status: 'paid-by-lender', paidAmount: amountToPay, paidDate: serverTimestamp() });
+                    }
+                });
+
+                // 4. Crear transacciones de historial
+                const amountToPay = loanData.originalAmount * (1 + loanData.interestRate / 100);
+                const recipientData = await getAccountData(recipientId);
+                const lenderData = await getAccountData(lenderId);
+
+                 // Registrar el cobro en el historial del prestamista (Entrada de dinero por la cancelación)
+                await createTransaction(lenderId, {
+                    amount: amountToPay,
+                    senderId: recipientId, // Quien debería haber pagado
+                    recipientId: lenderId,
+                    type: 'loan-paid-cancellation', // Entrada de dinero (Cobro de préstamo por cancelación)
+                    originalLoanId: lenderTransactionId,
+                    interestRate: loanData.interestRate,
+                    senderName: recipientData.name,
+                    recipientName: lenderData.name
+                }); 
+                 // Registrar el pago en el historial del deudor (Salida de dinero - Negativo, solo historial, no afecta saldo)
+                await createTransaction(recipientId, {
+                    amount: amountToPay,
+                    senderId: lenderId,
+                    recipientId: recipientId,
+                    type: 'loan-payment-lender-cancellation', // El deudor no movió dinero, solo se registra el pago forzado.
+                    originalLoanId: debtDoc ? debtDoc.id : 'N/A',
+                    interestRate: loanData.interestRate,
+                    senderName: lenderData.name,
+                    recipientName: recipientData.name
+                }); 
+
+                showMessage('Préstamo marcado como PAGADO. Ahora puedes puntuar al deudor.', 'success');
+                loadBalance(lenderId);
+                listenToTransactions(lenderId); // Forzar recarga de transacciones
+            } catch (e) {
+                console.error("Fallo al cancelar préstamo:", e);
+                showMessage(`Fallo al cancelar el préstamo: ${e.message}`, 'error');
+            }
+        }
+        
+        // --- FUNCIÓN ADICIONAL: Guardar Puntuación de Crédito ---
+        async function saveCreditScore(recipientId, score) {
+            if (!currentUser) throw new Error("Usuario no autenticado.");
+            
+            const recipientAccountRef = doc(db, `artifacts/${appId}/users/${recipientId}/account/data`);
+
+            await runTransaction(db, async (transaction) => {
+                const recipientDoc = await transaction.get(recipientAccountRef);
+                if (!recipientDoc.exists()) throw new Error("Cuenta del deudor no encontrada.");
+
+                const data = recipientDoc.data();
+                const currentScore = data.creditScore || { average: 5.0, count: 0 };
+                
+                // Nuevo cálculo del promedio
+                const newTotal = (currentScore.average * currentScore.count) + score;
+                const newCount = currentScore.count + 1;
+                const newAverage = newTotal / newCount;
+
+                // Actualizar el perfil del deudor
+                transaction.update(recipientAccountRef, { 
+                    creditScore: {
+                        average: newAverage,
+                        count: newCount
+                    }
+                });
+            });
+            // Recargar el score del prestamista, en caso de que sea el mismo, aunque no es su score.
+            loadCreditScore(recipientId);
+        }
+
+
         // --- MANEJO DE TRANSFERENCIAS Y PRÉSTAMOS ---
         document.getElementById('transfer-form').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -380,10 +622,28 @@
             if (senderId === recipientId) { showMessage('No puedes transferir a tu propia cuenta.', 'error'); return; }
             if (amount <= 0 || isNaN(amount)) { showMessage('Monto no válido.', 'error'); return; }
 
+            // NUEVO: Obtener el score del receptor para el check de préstamo
+            if (transactionType === 'loan') {
+                 const recipientData = await getAccountData(recipientId);
+                 if (!recipientData) { showMessage('ID del receptor no encontrado.', 'error'); return; }
+                 
+                 const rScore = recipientData.creditScore.average.toFixed(1);
+                 const rCount = recipientData.creditScore.count;
+                 
+                 // Uso de confirm() como única excepción de diálogo de confirmación de flujo de negocio
+                 if (!confirm(`El receptor (${recipientData.name}) tiene un Score de ${rScore} ★ (${rCount} votos). ¿Deseas continuar con el préstamo de $${amount.toFixed(2)} al ${interest}%?`)) {
+                     showMessage('Oferta de préstamo cancelada por el prestamista.', 'info'); return;
+                 }
+            }
+
+
             const senderRef = doc(db, `artifacts/${appId}/users/${senderId}/account/data`);
             const recipientRef = doc(db, `artifacts/${appId}/users/${recipientId}/account/data`);
 
             try {
+                const senderData = await getAccountData(senderId);
+                const recipientData = await getAccountData(recipientId);
+
                 if (transactionType === 'loan') {
                     // Lógica para Oferta de Préstamo (Aún no se mueve el dinero)
                     const loanData = { 
@@ -392,7 +652,8 @@
                         recipientId: recipientId,
                         interestRate: interest,
                         originalAmount: amount,
-                        status: 'pending-offer' 
+                        status: 'pending-offer',
+                        recipientName: recipientData ? recipientData.name : 'Desconocido'
                     };
 
                     // Verificar que el remitente tenga saldo para la OFERTA
@@ -402,14 +663,18 @@
                     }
 
                     // 1. Prestamista (Registra la salida potencial de dinero - tipo: loan-sent)
-                    const loanSentDoc = await createTransaction(senderId, { ...loanData, type: 'loan-sent' }); 
+                    const loanSentDoc = await createTransaction(senderId, { 
+                        ...loanData, 
+                        type: 'loan-sent',
+                        scoreGiven: false // Nuevo campo para saber si ya se puntuó
+                    }); 
 
                     // 2. Deudor (Registra la OFERTA que debe ACEPTAR/RECHAZAR - tipo: loan-offer)
                     await createTransaction(recipientId, { 
                         ...loanData, 
                         type: 'loan-offer', 
-                        // Referencia al documento de 'loan-sent' del prestamista
-                        senderTransactionId: loanSentDoc.id 
+                        senderTransactionId: loanSentDoc.id,
+                        lenderName: senderData ? senderData.name : 'Anónimo'
                     }); 
                     
                     showMessage('Oferta de préstamo enviada. El receptor debe aceptarla.', 'success');
@@ -433,7 +698,13 @@
                         transaction.update(recipientRef, { balance: newRecipientBalance });
                     });
                     
-                    const baseTransferData = { amount, senderId, recipientId };
+                    const baseTransferData = { 
+                        amount, 
+                        senderId, 
+                        recipientId, 
+                        senderName: senderData ? senderData.name : 'Anónimo',
+                        recipientName: recipientData ? recipientData.name : 'Desconocido'
+                    };
                     // Historial del Remitente (Negativo)
                     await createTransaction(senderId, { ...baseTransferData, type: 'transfer-sent' });
                     // Historial del Receptor (Positivo)
@@ -463,6 +734,9 @@
             const recipientRef = doc(db, `artifacts/${appId}/users/${recipientId}/account/data`);
             // El documento de deuda que se va a marcar como pagado (es el documento loan-debt del deudor)
             const loanDocRef = doc(db, `artifacts/${appId}/users/${payerId}/transactions/${loanDocId}`); 
+            // El documento 'loan-sent' del prestamista que se va a marcar como pagado
+            const senderLoanSentRef = doc(db, `artifacts/${appId}/users/${recipientId}/transactions/${loanData.senderTransactionId}`);
+
 
             try {
                 await runTransaction(db, async (transaction) => {
@@ -481,31 +755,41 @@
                     
                     // 2. Marcar deuda como pagada en el historial del deudor (esto hace desaparecer el botón Pagar)
                     transaction.update(loanDocRef, { status: 'paid', paidAmount: amountToPay, paidDate: serverTimestamp() });
+                    
+                    // 3. Marcar la transacción del prestamista como pagada
+                    transaction.update(senderLoanSentRef, { status: 'completed-paid', paidAmount: amountToPay, paidDate: serverTimestamp() });
                 });
                 
-                // 3. Registrar el pago en el historial del deudor (Salida de dinero - Negativo)
+                const payerData = await getAccountData(payerId);
+                const recipientData = await getAccountData(recipientId);
+
+                // 4. Registrar el pago en el historial del deudor (Salida de dinero - Negativo)
                 const paymentData = {
                     amount: amountToPay,
                     senderId: payerId,
                     recipientId: recipientId,
                     type: 'loan-payment', // Salida de dinero por pago de deuda (NEGATIVO)
                     originalLoanId: loanDocId,
-                    interestRate: loanData.interestRate
+                    interestRate: loanData.interestRate,
+                    senderName: payerData.name,
+                    recipientName: recipientData.name
                 };
                 await createTransaction(payerId, paymentData); 
 
-                // 4. Registrar el pago en el historial del prestamista (Entrada de dinero - Positivo)
+                // 5. Registrar el pago en el historial del prestamista (Entrada de dinero - Positivo)
                 const receivedData = {
                     amount: amountToPay,
                     senderId: payerId,
                     recipientId: recipientId,
                     type: 'loan-paid', // Entrada de dinero (Cobro de préstamo)
                     originalLoanId: loanDocId,
-                    interestRate: loanData.interestRate
+                    interestRate: loanData.interestRate,
+                    senderName: payerData.name,
+                    recipientName: recipientData.name
                 };
                 await createTransaction(recipientId, receivedData); 
 
-                showMessage('Préstamo pagado exitosamente.', 'success');
+                showMessage('Préstamo pagado exitosamente. El prestamista ahora puede puntuar tu comportamiento.', 'success');
                 loadBalance(payerId);
             } catch (e) {
                 console.error("Fallo de pago de préstamo:", e);
@@ -554,12 +838,22 @@
                 });
 
                 // --- ACCIONES FUERA DE LA TRANSACCIÓN DE SALDO ---
+                const senderData = await getAccountData(senderId);
+                const recipientData = await getAccountData(recipientId);
+
+                const loanBaseData = {
+                    ...offerData,
+                    senderName: senderData.name,
+                    recipientName: recipientData.name,
+                    senderTransactionId: offerData.senderTransactionId // Reutilizar el ID del prestamista
+                };
+
                 // 4. Registrar la DEUDA OFICIAL (loan-debt) en el historial del deudor (NECESARIO PARA EL BOTÓN PAGAR)
                 // Se crea un nuevo documento solo para rastrear la deuda y el pago.
-                await createTransaction(recipientId, { ...offerData, type: 'loan-debt', status: 'pending' });
+                await createTransaction(recipientId, { ...loanBaseData, type: 'loan-debt', status: 'pending' });
                 
                 // 5. Registrar el INGRESO de dinero (loan-received) en el historial del deudor
-                await createTransaction(recipientId, { ...offerData, type: 'loan-received', status: 'completed' });
+                await createTransaction(recipientId, { ...loanBaseData, type: 'loan-received', status: 'completed' });
                 
                 showMessage('Oferta de préstamo aceptada. El dinero se ha depositado en tu cuenta.', 'success');
                 loadBalance(recipientId);
@@ -620,35 +914,50 @@
                     let shouldGoToDebtsList = false;
                     
                     // --- Lógica de Tipos de Transacción ---
-
-                    if (data.type === 'transfer-sent' || data.type === 'loan-sent' || data.type === 'loan-payment') {
-                        // Salida de dinero (NEGATIVO)
-                        if (data.type === 'transfer-sent') description = 'Transferencia enviada';
-                        else if (data.type === 'loan-sent') {
-                            description = `Préstamo otorgado (Oferta ${data.status === 'rejected' || data.status === 'failed-rejected' ? 'Rechazada' : data.status === 'completed' ? 'Aceptada' : 'Pendiente'})`;
-                        }
-                        else if (data.type === 'loan-payment') {
-                            // Este es el pago que realiza el DEUDOR
-                            description = `Pago de Préstamo (Int: ${data.interestRate}%)`;
-                            amountDisplay = data.amount.toFixed(2);
-                        }
+                    
+                    if (data.type === 'transfer-sent') {
+                        description = `Transferencia enviada a ${data.recipientName || 'Desconocido'}`;
                         amountClass = 'text-red-500'; amountSign = '-';
-                    } else if (data.type === 'transfer-received' || data.type === 'loan-received' || data.type === 'loan-paid') {
-                        // Entrada de dinero (POSITIVO)
-                        if (data.type === 'transfer-received') description = 'Transferencia recibida';
-                        else if (data.type === 'loan-received') {
-                            // Este es el ingreso de dinero cuando el DEUDOR ACEPTA
-                            description = 'Préstamo recibido'; 
+                    } else if (data.type === 'transfer-received') {
+                        description = `Transferencia recibida de ${data.senderName || 'Desconocido'}`;
+                        amountClass = 'text-green-500'; amountSign = '+';
+                    } else if (data.type === 'loan-sent') {
+                        // Salida de dinero por préstamo otorgado (PRESTAMISTA)
+                        let statusText = 'Pendiente';
+                        if (data.status === 'completed') {
+                            statusText = 'Aceptado. Esperando pago.';
+                            // Botón de Cancelación/Pago por Prestamista
+                            actionButtonsHtml += `<button class="cancel-loan-btn bg-yellow-500 text-white px-3 py-1 rounded-full text-xs font-semibold hover:bg-yellow-600 mr-2" data-id="${doc.id}" data-recipient-id="${data.recipientId}">Marcar Pagado</button>`;
+                        } else if (data.status === 'completed-paid') { // Eliminada la condición redundante: || data.status === 'paid-by-lender'
+                            statusText = 'Pagado/Cancelado.';
+                            // Botón de Puntuación
+                            if (!data.scoreGiven) {
+                                actionButtonsHtml += `<button class="score-btn bg-blue-500 text-white px-3 py-1 rounded-full text-xs font-semibold hover:bg-blue-600" data-id="${doc.id}" data-recipient-id="${data.recipientId}" data-recipient-name="${data.recipientName}">Puntuar Deudor</button>`;
+                            } else {
+                                actionButtonsHtml += `<span class="text-xs text-white bg-green-700 px-2 py-1 rounded-full">Puntuado: ${data.score} ★</span>`;
+                            }
+                        } else if (data.status === 'rejected' || data.status === 'failed-rejected') {
+                            statusText = 'Rechazado/Fallido';
                         }
-                        else if (data.type === 'loan-paid') {
-                            // Este es el cobro que recibe el PRESTAMISTA
-                            description = `Cobro de Préstamo (Int: ${data.interestRate}%)`;
-                            amountDisplay = data.amount.toFixed(2);
-                        }
+                        
+                        description = `Préstamo a ${data.recipientName || 'Desconocido'} (Estado: ${statusText})`;
+                        amountClass = data.status === 'completed' || data.status === 'completed-paid' ? 'text-red-500' : 'text-gray-500'; 
+                        amountSign = data.status === 'completed' || data.status === 'completed-paid' ? '-' : '';
+                        amountDisplay = data.originalAmount.toFixed(2);
+
+                    } else if (data.type === 'loan-payment') {
+                        // Pago realizado por el DEUDOR
+                        description = `Pago de Préstamo a ${data.recipientName || 'Desconocido'} (Int: ${data.interestRate}%)`;
+                        amountDisplay = data.amount.toFixed(2);
+                        amountClass = 'text-red-500'; amountSign = '-';
+                    } else if (data.type === 'loan-paid' || data.type === 'loan-paid-cancellation') {
+                        // Cobro recibido por el PRESTAMISTA
+                        description = `Cobro de Préstamo de ${data.senderName || 'Desconocido'} (Int: ${data.interestRate}%)`;
+                        amountDisplay = data.amount.toFixed(2);
                         amountClass = 'text-green-500'; amountSign = '+';
                     } else if (data.type === 'loan-offer') {
                         // Oferta de préstamo (Solo muestra los botones para ACEPTAR/RECHAZAR)
-                        description = `OFERTA de Préstamo por $${data.amount.toFixed(2)} (Int: ${data.interestRate}%)`;
+                        description = `OFERTA de ${data.lenderName || 'Anónimo'} $${data.amount.toFixed(2)} (Int: ${data.interestRate}%)`;
                         amountClass = 'text-blue-500';
                         amountSign = '';
                         shouldGoToDebtsList = true;
@@ -671,24 +980,31 @@
                         const amountToPay = data.originalAmount * (1 + data.interestRate / 100);
                         const originalAmountDisplay = data.originalAmount.toFixed(2);
                         
-                        description = `Deuda de préstamo (Cap: $${originalAmountDisplay} + Int: ${data.interestRate}%)`;
+                        description = `Deuda con ${data.senderName || 'Desconocido'} (Cap: $${originalAmountDisplay} + Int: ${data.interestRate}%)`;
                         
                         if (data.status === 'pending') {
                             // Deuda activa: Aparece en rojo con signo negativo.
                             amountClass = 'text-red-500';
                             amountSign = '-';
                             amountDisplay = amountToPay.toFixed(2);
-                            actionButtonsHtml = `<button class="pay-btn bg-hug-primary text-white px-3 py-1 rounded-full text-xs font-semibold hover:bg-blue-600" data-id="${doc.id}">Pagar $${amountDisplay}</button>`;
+                            actionButtonsHtml = `<button class="pay-btn bg-hug-primary text-white px-3 py-1 rounded-full text-xs font-semibold hover:bg-blue-600" data-id="${doc.id}" data-sender-transaction-id="${data.senderTransactionId}">Pagar $${amountDisplay}</button>`;
                             shouldGoToDebtsList = true;
                             hasActiveDebtsOrOffers = true;
                         } else {
-                            // Deuda pagada: Se neutraliza visualmente la DEUDA (el movimiento de pago ya está registrado como 'loan-payment')
+                            // Deuda pagada: Se neutraliza visualmente la DEUDA
                             amountClass = 'text-gray-500 line-through';
                             amountSign = '';
                             amountDisplay = amountToPay.toFixed(2);
                             actionButtonsHtml = `<span class="text-xs text-white bg-green-500 px-2 py-1 rounded-full">Deuda Pagada</span>`;
                             shouldGoToDebtsList = false; // Una vez pagada, va al historial general para no saturar la lista de deudas.
                         }
+                    } else if (data.type === 'loan-received') {
+                         description = `Préstamo recibido de ${data.senderName || 'Desconocido'}`; 
+                         amountClass = 'text-green-500'; amountSign = '+';
+                    } else if (data.type === 'loan-payment-lender-cancellation') {
+                        description = `Préstamo cancelado/pagado a ${data.senderName || 'Desconocido'} (historial de pago)`;
+                        amountClass = 'text-gray-500 line-through'; amountSign = '-';
+                        amountDisplay = data.amount.toFixed(2);
                     }
                     
                     // --- Fin Lógica de Tipos de Transacción ---
@@ -700,8 +1016,8 @@
                             <p class="font-medium">${description}</p>
                             <p class="text-sm text-gray-500">${dateString}</p>
                         </div>
-                        <div class="text-right flex flex-col items-end">
-                            <p class="font-bold ${amountClass} ${shouldGoToDebtsList ? 'mb-2' : ''}">${amountSign}$${amountDisplay}</p>
+                        <div class="text-right flex flex-col items-end space-y-2">
+                            <p class="font-bold ${amountClass}">${amountSign}$${amountDisplay}</p>
                             ${actionButtonsHtml}
                         </div>
                     `;
@@ -752,6 +1068,34 @@
                         if (offerDoc.exists()) {
                             await rejectLoanOffer(docId, offerDoc.data());
                         }
+                    });
+                });
+
+                // NUEVOS LISTENERS: Cancelar Préstamo (Prestamista)
+                transactionsList.querySelectorAll('.cancel-loan-btn').forEach(button => {
+                    button.addEventListener('click', async () => {
+                        const loanDocId = button.dataset.id;
+                        const recipientId = button.dataset.recipientId;
+                        // Se usa confirm() como la única excepción para la confirmación crítica del flujo de negocio
+                        if (confirm('¿Estás seguro de que deseas marcar este préstamo como PAGADO? Esto cancelará la deuda activa del deudor y lo habilitará para la puntuación.')) {
+                            await cancelLoanByLender(loanDocId, recipientId);
+                        }
+                    });
+                });
+
+                // NUEVOS LISTENERS: Puntuar Deudor (Prestamista)
+                transactionsList.querySelectorAll('.score-btn').forEach(button => {
+                    button.addEventListener('click', () => {
+                        const loanDocId = button.dataset.id;
+                        const recipientId = button.dataset.recipientId;
+                        const recipientName = button.dataset.recipientName;
+                        
+                        scoreModalRecipientName.textContent = recipientName;
+                        scoreModalRecipientId.textContent = recipientId;
+                        scoreForm.setAttribute('data-loan-doc-id', loanDocId);
+                        scoreForm.setAttribute('data-recipient-id', recipientId);
+                        document.querySelectorAll('input[name="rating"]').forEach(radio => radio.checked = false); // Limpiar selección
+                        scoreModal.style.display = 'block'; // Muestra el overlay/modal
                     });
                 });
             });
