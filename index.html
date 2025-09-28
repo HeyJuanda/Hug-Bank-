@@ -7,6 +7,7 @@
     <title>HUG Bank - Tu Banco Digital</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
+        /* [Se mantiene todo el bloque de estilos CSS] */
         :root {
             --hug-primary: #007bff;
             --hug-secondary: #f3f4f6;
@@ -108,32 +109,6 @@
 
     <div id="app" class="w-full max-w-5xl">
         
-        <div id="auth-view" class="bg-card p-6 md:p-8 max-w-md mx-auto mt-16">
-            <h2 class="text-2xl font-bold mb-4" id="auth-heading">Iniciar Sesión</h2>
-            <form id="auth-form" class="space-y-4">
-                <div id="name-field" class="hidden">
-                    <label for="name" class="block text-sm font-medium">Nombre</label>
-                    <input type="text" id="name" required class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                <div>
-                    <label for="email" class="block text-sm font-medium">Correo Electrónico</label>
-                    <input type="email" id="email" required class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                <div>
-                    <label for="password" class="block text-sm font-medium">Contraseña</label>
-                    <input type="password" id="password" required class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                <button type="submit" id="auth-button" class="w-full py-3 px-4 rounded-full text-lg font-semibold text-white btn-primary">
-                    Iniciar Sesión
-                </button>
-            </form>
-            <div class="text-center mt-4">
-                <button id="toggle-auth" class="text-sm text-blue-600 hover:text-blue-800 focus:outline-none">
-                    ¿No tienes cuenta? Regístrate aquí.
-                </button>
-            </div>
-        </div>
-
         <div id="dashboard-view" class="hidden bg-card p-0">
             
             <div class="header-bar flex flex-col md:flex-row justify-between items-start md:items-center space-y-3 md:space-y-0">
@@ -254,9 +229,9 @@
     </div>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // Importa 'getDocs' para ejecutar queries correctamente (ERROR CORREGIDO)
-        import { getFirestore, doc, setDoc, getDoc, updateDoc, runTransaction, collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, where, arrayUnion, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // Se mantiene getAuth, pero solo para signOut y onAuthStateChanged
+        import { getAuth, signOut, onAuthStateChanged, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, runTransaction, collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, where, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- CONFIGURACIÓN E INICIALIZACIÓN DE FIREBASE ---
         const demoFirebaseConfig = {
@@ -279,15 +254,9 @@
 
         // --- REFERENCIAS DE UI ---
         const views = {
-            auth: document.getElementById('auth-view'),
             dashboard: document.getElementById('dashboard-view'),
             transfer: document.getElementById('transfer-view')
         };
-        const authForm = document.getElementById('auth-form');
-        const nameField = document.getElementById('name-field');
-        const authHeading = document.getElementById('auth-heading');
-        const authButton = document.getElementById('auth-button');
-        const toggleAuthButton = document.getElementById('toggle-auth');
         const messageBox = document.getElementById('message-box');
         const transactionTypeSelect = document.getElementById('transaction-type');
         const interestRateField = document.getElementById('interest-rate-field');
@@ -302,8 +271,6 @@
         const scoreModalRecipientName = document.getElementById('score-modal-recipient-name');
         const scoreModalRecipientId = document.getElementById('score-modal-recipient-id');
 
-
-        let isRegister = false;
 
         // --- UTILIDADES ---
         function showMessage(message, type = 'success') {
@@ -363,15 +330,7 @@
         });
 
         // --- MANEJO DE VISTAS Y EVENTOS ---
-        toggleAuthButton.addEventListener('click', () => {
-            isRegister = !isRegister;
-            authHeading.textContent = isRegister ? 'Crear Cuenta' : 'Iniciar Sesión';
-            authButton.textContent = isRegister ? 'Registrarse' : 'Iniciar Sesión';
-            toggleAuthButton.textContent = isRegister ? '¿Ya tienes cuenta? Inicia Sesión aquí.' : '¿No tienes cuenta? Regístrate aquí.';
-            nameField.classList.toggle('hidden', !isRegister);
-            messageBox.classList.add('hidden');
-        });
-
+        
         document.getElementById('show-transfer-btn').addEventListener('click', () => {
             switchView('transfer');
         });
@@ -385,48 +344,21 @@
         });
 
         // --- FIREBASE AUTH Y ESTADO ---
-        authForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const name = document.getElementById('name').value;
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-
-            try {
-                if (isRegister) {
-                    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-                    await updateProfile(userCredential.user, { displayName: name });
-                    
-                    const userAccountRef = doc(db, `artifacts/${appId}/users/${userCredential.user.uid}/account/data`);
-                    // Saldo inicial de $0.00 e inicialización del Credit Score
-                    await setDoc(userAccountRef, { balance: 0.00, name: name, email: email, creditScore: { average: 5.0, count: 0 } });
-                    
-                    showMessage('Registro exitoso. Saldo inicial: $0.00', 'success');
-                } else {
-                    await signInWithEmailAndPassword(auth, email, password);
-                    showMessage('Inicio de sesión exitoso.', 'success');
-                }
-            } catch (error) {
-                console.error("Error de autenticación:", error);
-                let message = 'Error de autenticación. Verifica tu correo y contraseña.';
-                if (error.code === 'auth/email-already-in-use') message = 'El correo ya está registrado.';
-                if (error.code === 'auth/invalid-email') message = 'El formato del correo es inválido.';
-                if (error.code === 'auth/weak-password') message = 'La contraseña debe tener al menos 6 caracteres.';
-                showMessage(message, 'error');
-            }
-        });
-
+        
         document.getElementById('logout-btn').addEventListener('click', async () => {
             try {
                 await signOut(auth);
-                showMessage('Has cerrado sesión.', 'info');
+                // Redirigir al usuario al login
+                window.location.href = './login'; 
             } catch (error) {
                 console.error("Error al cerrar sesión:", error);
                 showMessage('Error al cerrar sesión.', 'error');
             }
         });
 
+        // Este bloque detecta si hay un usuario logueado con cuenta
         onAuthStateChanged(auth, async (user) => {
-            if (user) {
+            if (user && !user.isAnonymous) { // Solo usuarios autenticados con cuenta
                 currentUser = user;
                 document.getElementById('user-id-display').textContent = user.uid;
                 document.getElementById('user-name-display').textContent = user.displayName || 'Usuario';
@@ -434,20 +366,19 @@
                 loadCreditScore(user.uid); // Cargar puntuación de crédito
                 listenToTransactions(user.uid);
                 switchView('dashboard');
+            } else if (user && user.isAnonymous) {
+                // Si el usuario es anónimo (solo para entorno), forzar redirección al login
+                await signOut(auth);
+                window.location.href = './login';
             } else {
                 currentUser = null;
-                switchView('auth');
-                // Intentar autenticación silenciosa (solo para Canvas/Entorno)
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    try { await signInWithCustomToken(auth, __initial_auth_token); } catch(e) { console.warn("Fallo token. Anonimo..."); try { await signInAnonymously(auth); } catch(e) { console.error("Fallo anónimo."); }}
-                } else {
-                    try { await signInAnonymously(auth); } catch(e) { console.error("Fallo anónimo."); }
-                }
+                // Si no hay usuario, redirigir al login.
+                window.location.href = './login'; 
             }
         });
 
-        // --- FUNCIONES FIRESTORE ---
-
+        // --- FUNCIONES FIRESTORE (Se mantienen) ---
+        
         async function loadBalance(userId) {
             if (!userId) return;
             const balanceDisplay = document.getElementById('balance-display');
@@ -459,7 +390,7 @@
                     const balance = data.balance;
                     balanceDisplay.textContent = `$${balance.toFixed(2)}`;
                 } else {
-                    // Inicializar cuenta si no existe (debería existir después del registro/auth)
+                    // Si llega aquí sin cuenta, debería ser un error, pero forzamos la inicialización
                     await setDoc(userAccountRef, { balance: 0.00, name: currentUser.displayName || 'Anónimo', email: currentUser.email || 'N/A', creditScore: { average: 5.0, count: 0 } });
                     balanceDisplay.textContent = '$0.00';
                 }
@@ -928,7 +859,7 @@
                             statusText = 'Aceptado. Esperando pago.';
                             // Botón de Cancelación/Pago por Prestamista
                             actionButtonsHtml += `<button class="cancel-loan-btn bg-yellow-500 text-white px-3 py-1 rounded-full text-xs font-semibold hover:bg-yellow-600 mr-2" data-id="${doc.id}" data-recipient-id="${data.recipientId}">Marcar Pagado</button>`;
-                        } else if (data.status === 'completed-paid') { // Eliminada la condición redundante: || data.status === 'paid-by-lender'
+                        } else if (data.status === 'completed-paid') { 
                             statusText = 'Pagado/Cancelado.';
                             // Botón de Puntuación
                             if (!data.scoreGiven) {

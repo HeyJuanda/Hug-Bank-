@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" href="../bank.png" />
+    <title>HUG Bank - Iniciar Sesión</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --hug-primary: #007bff;
+            --hug-secondary: #f3f4f6;
+            --hug-text-color: #1f2937;
+            --hug-header: #3b82f6;
+        }
+
+        body {
+            font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacs, sans-serif;
+            background-color: var(--hug-secondary);
+            color: var(--hug-text-color);
+        }
+        .bg-card {
+            background-color: #ffffff;
+            border-radius: 1rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        .btn-primary {
+            background-color: var(--hug-primary);
+            transition: background-color 0.2s ease-in-out;
+        }
+        .btn-primary:hover {
+            background-color: #2563eb; /* Blue-600 */
+        }
+        .btn-secondary {
+            background-color: #e5e7eb; /* Gray-200 */
+            color: var(--hug-text-color);
+            transition: background-color 0.2s ease-in-out;
+        }
+        .btn-secondary:hover {
+            background-color: #d1d5db;
+        }
+        .transaction-item:hover {
+            background-color: #f7f9fb;
+        }
+        .header-bar {
+            background-color: var(--hug-header);
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 0.75rem 0.75rem 0 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-start justify-center p-4 md:p-8">
+
+    <div id="app" class="w-full max-w-5xl">
+        
+        <div id="auth-view" class="bg-card p-6 md:p-8 max-w-md mx-auto mt-16">
+            <h2 class="text-2xl font-bold mb-4" id="auth-heading">Iniciar Sesión</h2>
+            <form id="auth-form" class="space-y-4">
+                <div id="name-field" class="hidden">
+                    <label for="name" class="block text-sm font-medium">Nombre</label>
+                    <!-- CORRECCIÓN: Se elimina 'required' para evitar la validación en el modo 'Iniciar Sesión' -->
+                    <input type="text" id="name" name="name" class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label for="email" class="block text-sm font-medium">Correo Electrónico</label>
+                    <input type="email" id="email" name="email" required class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <div>
+                    <label for="password" class="block text-sm font-medium">Contraseña</label>
+                    <input type="password" id="password" name="password" required class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <button type="submit" id="auth-button" class="w-full py-3 px-4 rounded-full text-lg font-semibold text-white btn-primary">
+                    Iniciar Sesión
+                </button>
+            </form>
+            <div class="text-center mt-4">
+                <button id="toggle-auth" class="text-sm text-blue-600 hover:text-blue-800 focus:outline-none">
+                    ¿No tienes cuenta? Regístrate aquí.
+                </button>
+            </div>
+        </div>
+
+        <div id="message-box" class="mt-4 p-4 rounded-lg text-sm hidden" role="alert"></div>
+
+    </div>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, updateProfile, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // --- CONFIGURACIÓN E INICIALIZACIÓN DE FIREBASE ---
+        const demoFirebaseConfig = {
+            // NOTA: Esta clave es solo de demostración y puede fallar. 
+            // Usa tu clave API real si tienes problemas de conexión.
+            apiKey: "AIzaSyBedGoV0Lp_i0Z2wo1_0SkaJa_NrZTPN2g",
+            authDomain: "hug-bank.firebaseapp.com",
+            projectId: "hug-bank",
+            storageBucket: "hug-bank.firebasestorage.app",
+            messagingSenderId: "891285624181",
+            appId: "1:891285624181:web:c37e3a50275353af88af3c",
+            measurementId: "G-5HDSRH2SB2"
+        };
+        // Usa la configuración inyectada por el entorno (__firebase_config) si existe, 
+        // de lo contrario, usa la configuración demo.
+        const firebaseConfig = (typeof __firebase_config !== 'undefined' && __firebase_config) ? JSON.parse(__firebase_config) : demoFirebaseConfig;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // --- REFERENCIAS DE UI ---
+        const authForm = document.getElementById('auth-form');
+        const nameField = document.getElementById('name-field');
+        const authHeading = document.getElementById('auth-heading');
+        const authButton = document.getElementById('auth-button');
+        const toggleAuthButton = document.getElementById('toggle-auth');
+        const messageBox = document.getElementById('message-box');
+
+        let isRegister = false;
+
+        // --- UTILIDADES ---
+        function showMessage(message, type = 'success') {
+            messageBox.textContent = message;
+            messageBox.className = 'mt-4 p-4 rounded-lg text-sm transition-all duration-300';
+            if (type === 'success') {
+                messageBox.classList.add('bg-green-100', 'text-green-800');
+            } else if (type === 'error') {
+                messageBox.classList.add('bg-red-100', 'text-red-800');
+            } else if (type === 'info') {
+                 messageBox.classList.add('bg-blue-100', 'text-blue-800');
+            }
+            messageBox.classList.remove('hidden');
+
+            setTimeout(() => {
+                messageBox.classList.add('hidden');
+            }, 5000);
+        }
+
+        // --- MANEJO DE VISTAS Y EVENTOS ---
+        toggleAuthButton.addEventListener('click', () => {
+            isRegister = !isRegister;
+            authHeading.textContent = isRegister ? 'Crear Cuenta' : 'Iniciar Sesión';
+            authButton.textContent = isRegister ? 'Registrarse' : 'Iniciar Sesión';
+            toggleAuthButton.textContent = isRegister ? '¿Ya tienes cuenta? Inicia Sesión aquí.' : '¿No tienes cuenta? Regístrate aquí.';
+            
+            // Ocultar/Mostrar el campo Nombre
+            nameField.classList.toggle('hidden', !isRegister);
+            
+            // Si estamos en modo Registro, hacemos el campo Nombre OBLIGATORIO mediante JS.
+            document.getElementById('name').required = isRegister;
+
+            messageBox.classList.add('hidden');
+        });
+
+        // --- FIREBASE AUTH Y ESTADO ---
+        authForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('name').value;
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            // Validación manual para el campo Nombre en el modo Registro
+            if (isRegister && !name.trim()) {
+                showMessage('Por favor, ingresa tu Nombre.', 'error');
+                return;
+            }
+
+
+            try {
+                let userCredential;
+                if (isRegister) {
+                    userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                    await updateProfile(userCredential.user, { displayName: name });
+                    
+                    const userAccountRef = doc(db, `artifacts/${appId}/users/${userCredential.user.uid}/account/data`);
+                    // Saldo inicial de $0.00 e inicialización del Credit Score
+                    await setDoc(userAccountRef, { balance: 0.00, name: name, email: email, creditScore: { average: 5.0, count: 0 } });
+                    
+                    showMessage('Registro exitoso. Redirigiendo...', 'success');
+                } else {
+                    userCredential = await signInWithEmailAndPassword(auth, email, password);
+                    showMessage('Inicio de sesión exitoso. Redirigiendo...', 'success');
+                }
+                
+                // Redirigir al root de la app (que ahora contiene el dashboard)
+                setTimeout(() => {
+                    window.location.href = '../'; 
+                }, 1000);
+
+            } catch (error) {
+                console.error("Error de autenticación:", error);
+                
+                let message;
+                // Si el código es por problema de red/clave, lo indicamos claramente.
+                if (error.code === 'auth/network-request-failed' || error.message.includes('A network error')) {
+                    message = 'Fallo de Conexión: La clave API de Firebase es inválida o expiró. Por favor, actualiza tu configuración de Firebase.';
+                } else {
+                    // Mensajes de error específicos de autenticación
+                    message = 'Error de autenticación. Verifica tu correo y contraseña.';
+                    if (error.code === 'auth/email-already-in-use') message = 'El correo ya está registrado.';
+                    if (error.code === 'auth/invalid-email') message = 'El formato del correo es inválido.';
+                    if (error.code === 'auth/weak-password') message = 'La contraseña debe tener al menos 6 caracteres.';
+                    if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') message = 'Credenciales incorrectas.';
+                }
+                
+                showMessage(message, 'error');
+            }
+        });
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user && !user.isAnonymous) {
+                // Si el usuario ya está autenticado (con cuenta), redirigir directamente al dashboard
+                window.location.href = '../';
+            } else {
+                // Si NO hay usuario con cuenta (es nulo o anónimo), intentamos autenticar para el entorno (Canvas)
+                if (!user && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    try { await signInWithCustomToken(auth, __initial_auth_token); } catch(e) { console.warn("Fallo token. Anonimo..."); try { await signInAnonymously(auth); } catch(e) { console.error("Fallo anónimo."); }}
+                } else if (!user) {
+                    try { await signInAnonymously(auth); } catch(e) { console.error("Fallo anónimo."); }
+                }
+                // Si es un usuario anónimo, se queda en esta vista esperando el login/registro.
+            }
+        });
+    </script>
+</body>
+</html>
