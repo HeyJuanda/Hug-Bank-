@@ -60,7 +60,6 @@
             <form id="auth-form" class="space-y-4">
                 <div id="name-field" class="hidden">
                     <label for="name" class="block text-sm font-medium">Nombre</label>
-                    <!-- CORRECCIÓN: Se elimina 'required' para evitar la validación en el modo 'Iniciar Sesión' -->
                     <input type="text" id="name" name="name" class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
                 </div>
                 <div>
@@ -70,6 +69,12 @@
                 <div>
                     <label for="password" class="block text-sm font-medium">Contraseña</label>
                     <input type="password" id="password" name="password" required class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                    
+                    <div class="text-right mt-1" id="forgot-password-container">
+                        <button type="button" id="forgot-password" class="text-xs text-blue-500 hover:text-blue-700 focus:outline-none">
+                            ¿Olvidaste tu contraseña?
+                        </button>
+                    </div>
                 </div>
                 <button type="submit" id="auth-button" class="w-full py-3 px-4 rounded-full text-lg font-semibold text-white btn-primary">
                     Iniciar Sesión
@@ -88,7 +93,7 @@
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, updateProfile, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, updateProfile, signInAnonymously, signInWithCustomToken, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; // Se añade sendPasswordResetEmail
         import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- CONFIGURACIÓN E INICIALIZACIÓN DE FIREBASE ---
@@ -119,6 +124,10 @@
         const authButton = document.getElementById('auth-button');
         const toggleAuthButton = document.getElementById('toggle-auth');
         const messageBox = document.getElementById('message-box');
+        // NUEVO: Referencia al botón de Olvidé mi contraseña
+        const forgotPasswordButton = document.getElementById('forgot-password');
+        const forgotPasswordContainer = document.getElementById('forgot-password-container');
+
 
         let isRegister = false;
 
@@ -150,11 +159,39 @@
             // Ocultar/Mostrar el campo Nombre
             nameField.classList.toggle('hidden', !isRegister);
             
+            // Ocultar/Mostrar el enlace de Olvidé Contraseña
+            forgotPasswordContainer.classList.toggle('hidden', isRegister);
+
+
             // Si estamos en modo Registro, hacemos el campo Nombre OBLIGATORIO mediante JS.
             document.getElementById('name').required = isRegister;
 
             messageBox.classList.add('hidden');
         });
+
+        // NUEVO: Evento para la recuperación de contraseña
+        forgotPasswordButton.addEventListener('click', async () => {
+            const emailInput = document.getElementById('email');
+            const email = emailInput.value;
+
+            if (!email) {
+                showMessage('Por favor, ingresa tu correo electrónico para enviarte las instrucciones de restablecimiento.', 'info');
+                return;
+            }
+
+            try {
+                await sendPasswordResetEmail(auth, email);
+                showMessage(`Se ha enviado un correo de recuperación a ${email}. Revisa tu bandeja de entrada.`, 'success');
+            } catch (error) {
+                console.error("Error al enviar correo de restablecimiento:", error);
+                let message = 'Error al intentar restablecer la contraseña. Verifica el correo e inténtalo de nuevo.';
+                if (error.code === 'auth/invalid-email') message = 'El formato del correo es inválido.';
+                if (error.code === 'auth/user-not-found') message = 'No hay usuario registrado con ese correo.';
+                
+                showMessage(message, 'error');
+            }
+        });
+
 
         // --- FIREBASE AUTH Y ESTADO ---
         authForm.addEventListener('submit', async (e) => {
