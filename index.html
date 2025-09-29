@@ -119,7 +119,12 @@
                     </h1>
                     <p class="text-sm font-medium mt-1">Bienvenido, <span id="user-name-display" class="font-bold">Usuario</span></p>
                     <p class="text-xs text-blue-200 mt-0 break-all">ID: <span id="user-id-display">...</span></p>
-                    <p class="text-xs text-blue-200 mt-0">Crédito: <span id="credit-score-display" class="font-bold text-white">N/A</span></p>
+                    <div class="flex items-center space-x-2">
+                        <p class="text-xs text-blue-200 mt-0">Crédito: <span id="credit-score-display" class="font-bold text-white">N/A</span></p>
+                        <button id="reset-score-btn" class="bg-yellow-400 text-gray-800 text-xs font-bold px-2 py-0.5 rounded hover:bg-yellow-500 transition duration-150" title="Costo: $5.00">
+                            Resetear Score
+                        </button>
+                        </div>
                 </div>
 
                 <div class="flex flex-row space-x-4 w-full md:w-auto">
@@ -147,7 +152,14 @@
                             <p class="text-gray-500 text-sm">Cargando...</p>
                         </div>
                     </div>
-                </div>
+                    
+                    <div class="bg-card p-5 border border-gray-100">
+                        <h3 class="text-xl font-bold mb-4">Solicitudes de Préstamo Públicas</h3>
+                        <div id="loan-requests-list" class="space-y-4 max-h-60 overflow-y-auto">
+                            <p class="text-gray-500 text-sm">Cargando solicitudes...</p>
+                        </div>
+                    </div>
+                    </div>
 
                 <div class="lg:col-span-2">
                     <div class="bg-card p-5 border border-gray-100 h-full">
@@ -166,10 +178,10 @@
 
             <form id="transfer-form" class="space-y-4">
                 <div>
-                    <label for="recipient-id" class="block text-sm font-medium">ID del Receptor</label>
+                    <label for="recipient-id" id="recipient-id-label" class="block text-sm font-medium">ID del Receptor</label>
                     <input type="text" id="recipient-id" required placeholder="ID completo del usuario"
                            class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
-                </div>
+                           </div>
 
                 <div>
                     <label for="amount" class="block text-sm font-medium">Monto</label>
@@ -181,17 +193,18 @@
                     <label for="transaction-type" class="block text-sm font-medium">Tipo de Transacción</label>
                     <select id="transaction-type" class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
                         <option value="transfer">Transferencia</option>
-                        <option value="loan">Préstamo</option>
+                        <option value="loan">Oferta de Préstamo (Prestar)</option>
+                        <option value="loan-request">Solicitud de Préstamo (Deuda)</option>
                     </select>
-                </div>
+                    </div>
                 
-                <div id="interest-rate-field" class="hidden">
+                <div id="interest-rate-field">
                     <label for="interest" class="block text-sm font-medium">Interés (%)</label>
                     <input type="number" id="interest" min="0" step="0.01" value="5"
                            class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
                 </div>
 
-                <button type="submit" class="w-full py-3 px-4 rounded-full text-lg font-semibold text-white btn-primary">
+                <button type="submit" id="transfer-submit-btn" class="w-full py-3 px-4 rounded-full text-lg font-semibold text-white btn-primary">
                     Confirmar
                 </button>
             </form>
@@ -263,6 +276,15 @@
         const transactionsList = document.getElementById('transactions-list');
         const debtsList = document.getElementById('debts-list'); 
         const creditScoreDisplay = document.getElementById('credit-score-display'); 
+        // Referencia UI para el nombre
+        const userNameDisplay = document.getElementById('user-name-display');
+        
+        // [ADICIÓN: Referencias de UI para Solicitudes]
+        const loanRequestsList = document.getElementById('loan-requests-list');
+        const recipientIdInput = document.getElementById('recipient-id');
+        const recipientIdLabel = document.getElementById('recipient-id-label');
+        const transferSubmitBtn = document.getElementById('transfer-submit-btn');
+        // [/ADICIÓN: Referencias de UI para Solicitudes]
 
         // Referencias del Modal de Puntuación
         const scoreModal = document.getElementById('score-modal');
@@ -339,9 +361,25 @@
             switchView('dashboard');
         });
 
+        // [MODIFICACIÓN: Lógica para ocultar/cambiar inputs en Transferir/Solicitar]
         transactionTypeSelect.addEventListener('change', (e) => {
-            interestRateField.classList.toggle('hidden', e.target.value !== 'loan');
+            const type = e.target.value;
+            const isLoanRequest = type === 'loan-request';
+            
+            // Campo de Interés siempre visible, pero con un valor por defecto si no es una solicitud o préstamo
+            interestRateField.classList.toggle('hidden', type === 'transfer');
+            
+            // Campo de Receptor
+            recipientIdInput.required = !isLoanRequest;
+            recipientIdInput.value = isLoanRequest ? '' : recipientIdInput.value;
+            recipientIdInput.disabled = isLoanRequest; // Deshabilitar si es solicitud
+            recipientIdInput.placeholder = isLoanRequest ? 'Se genera automáticamente' : 'ID completo del usuario';
+            recipientIdLabel.textContent = isLoanRequest ? 'ID del Solicitante (Eres tú)' : 'ID del Receptor';
+            transferSubmitBtn.textContent = isLoanRequest ? 'Publicar Solicitud' : 'Confirmar';
         });
+        // Inicializar el estado de la vista de transferencia/préstamo
+        transactionTypeSelect.dispatchEvent(new Event('change'));
+        // [/MODIFICACIÓN: Lógica para ocultar/cambiar inputs en Transferir/Solicitar]
 
         // --- FIREBASE AUTH Y ESTADO ---
         
@@ -356,15 +394,21 @@
             }
         });
 
-        // Este bloque detecta si hay un usuario logueado con cuenta
+        // Bloque de autenticación: ELIMINAMOS la lectura directa de user.displayName aquí.
         onAuthStateChanged(auth, async (user) => {
             if (user && !user.isAnonymous) { // Solo usuarios autenticados con cuenta
                 currentUser = user;
                 document.getElementById('user-id-display').textContent = user.uid;
-                document.getElementById('user-name-display').textContent = user.displayName || 'Usuario';
+                
+                // *** CORRECCIÓN #2: Eliminado el uso de user.displayName aquí.
+                // loadBalance se encargará de establecer el nombre desde Firestore.
+                
                 loadBalance(user.uid);
                 loadCreditScore(user.uid); // Cargar puntuación de crédito
                 listenToTransactions(user.uid);
+                // [ADICIÓN: Escuchar solicitudes de préstamo]
+                listenToLoanRequests(user.uid);
+                // [/ADICIÓN: Escuchar solicitudes de préstamo]
                 switchView('dashboard');
             } else if (user && user.isAnonymous) {
                 // Si el usuario es anónimo (solo para entorno), forzar redirección al login
@@ -376,9 +420,66 @@
                 window.location.href = './login'; 
             }
         });
-
-        // --- FUNCIONES FIRESTORE (Se mantienen) ---
         
+        // [ADICIÓN: Función para resetear el score]
+        async function resetCreditScore(userId) {
+            if (!userId) return;
+            const COST = 5.00;
+            const userAccountRef = doc(db, `artifacts/${appId}/users/${userId}/account/data`);
+            
+            if (!confirm(`Confirmar pago de $${COST.toFixed(2)} para resetear tu historial crediticio a 5.0 ★ (0 votos). ¿Deseas continuar?`)) {
+                showMessage('Operación de reseteo de score cancelada.', 'info');
+                return;
+            }
+
+            try {
+                await runTransaction(db, async (transaction) => {
+                    const userDoc = await transaction.get(userAccountRef);
+                    if (!userDoc.exists()) throw new Error("Cuenta no encontrada.");
+
+                    const currentBalance = userDoc.data().balance;
+                    if (currentBalance < COST) throw new Error("Saldo insuficiente para pagar el reseteo.");
+
+                    // Descontar saldo
+                    const newBalance = currentBalance - COST;
+                    transaction.update(userAccountRef, { 
+                        balance: newBalance,
+                        creditScore: { average: 5.0, count: 0 } // Resetear score
+                    });
+                });
+
+                // Registrar transacción en historial (Salida de dinero)
+                const userData = await getAccountData(userId);
+                await createTransaction(userId, {
+                    amount: COST,
+                    senderId: userId,
+                    recipientId: 'HUG Bank',
+                    type: 'score-reset-fee',
+                    senderName: userData.name,
+                    recipientName: 'HUG Bank'
+                }); 
+
+                showMessage('¡Tu historial crediticio ha sido reseteado a 5.0 estrellas! Se descontaron $5.00 de tu saldo.', 'success');
+                loadBalance(userId);
+                loadCreditScore(userId);
+                listenToTransactions(userId);
+            } catch (e) {
+                console.error("Fallo al resetear el score:", e);
+                showMessage(`Fallo al resetear el score: ${e.message}`, 'error');
+            }
+        }
+        
+        document.getElementById('reset-score-btn').addEventListener('click', () => {
+            if (currentUser) {
+                resetCreditScore(currentUser.uid);
+            }
+        });
+        // [/ADICIÓN: Función para resetear el score]
+
+
+        // --- FUNCIONES FIRESTORE ---
+        
+        // *** CORRECCIÓN #1: Modificación de loadBalance para cargar el nombre desde Firestore.
         async function loadBalance(userId) {
             if (!userId) return;
             const balanceDisplay = document.getElementById('balance-display');
@@ -388,11 +489,21 @@
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     const balance = data.balance;
+                    
+                    // >> OBTENER Y MOSTRAR EL NOMBRE DESDE FIRESTORE <<
+                    userNameDisplay.textContent = data.name || 'Usuario';
+                    
                     // Aquí es donde el saldo negativo se mostrará correctamente si aplica
                     balanceDisplay.textContent = `$${balance.toFixed(2)}`;
                 } else {
                     // Si llega aquí sin cuenta, debería ser un error, pero forzamos la inicialización
-                    await setDoc(userAccountRef, { balance: 0.00, name: currentUser.displayName || 'Anónimo', email: currentUser.email || 'N/A', creditScore: { average: 5.0, count: 0 } });
+                    // Usamos currentUser.displayName como fallback si está disponible
+                    const fallbackName = currentUser.displayName || 'Anónimo'; 
+                    await setDoc(userAccountRef, { balance: 0.00, name: fallbackName, email: currentUser.email || 'N/A', creditScore: { average: 5.0, count: 0 } });
+                    
+                    // >> MOSTRAR EL NOMBRE DE FALLBACK <<
+                    userNameDisplay.textContent = fallbackName;
+                    
                     balanceDisplay.textContent = '$0.00';
                 }
             } catch (error) {
@@ -576,15 +687,94 @@
             e.preventDefault();
             if (!currentUser) { showMessage('Debes iniciar sesión para transferir.', 'error'); return; }
 
-            const recipientId = document.getElementById('recipient-id').value.trim();
+            // El recipientId solo es obligatorio si no es una Solicitud de Préstamo
+            const recipientId = transactionTypeSelect.value !== 'loan-request' ? document.getElementById('recipient-id').value.trim() : null;
             const amount = parseFloat(document.getElementById('amount').value);
             const transactionType = transactionTypeSelect.value;
             const interest = parseFloat(document.getElementById('interest').value);
             const senderId = currentUser.uid;
 
-            if (senderId === recipientId) { showMessage('No puedes transferir a tu propia cuenta.', 'error'); return; }
+            if (transactionType !== 'loan-request' && senderId === recipientId) { 
+                showMessage('No puedes transferir a tu propia cuenta.', 'error'); return; 
+            }
             if (amount <= 0 || isNaN(amount)) { showMessage('Monto no válido.', 'error'); return; }
 
+            if (transactionType === 'loan-request') {
+                
+                const interestRateInput = document.getElementById('interest');
+                const interestRate = parseFloat(interestRateInput.value);
+
+                if (isNaN(interestRate) || interestRate < 1 || interestRate > 50) {
+                    return showMessage('El interés debe ser entre 1% y 50%.', 'error');
+                }
+
+                // --- FIX: SOLUCIÓN AL ERROR DEL ÍNDICE (Check de una sola solicitud activa) ---
+                // Se busca por un solo campo ('debtorId') para evitar el requisito de índice compuesto.
+                const userRequestsQuery = query(
+                    collection(db, `artifacts/${appId}/loan-requests`),
+                    where('debtorId', '==', senderId)
+                );
+                
+                let hasActiveRequest = false;
+                
+                try {
+                    const userRequestsSnapshot = await getDocs(userRequestsQuery);
+                    
+                    // Filtramos en el cliente si existe alguna con estado 'pending'
+                    hasActiveRequest = userRequestsSnapshot.docs.some(doc => doc.data().status === 'pending');
+                    
+                } catch (e) {
+                    // Captura errores si el index para 'debtorId' no existe (aunque debería ser un índice simple y seguro)
+                    console.error("Fallo al verificar solicitud activa:", e.message);
+                    showMessage(`Error al verificar solicitudes: ${e.message}`, 'error'); 
+                    return;
+                }
+                
+                if (hasActiveRequest) {
+                    showMessage('Ya tienes una solicitud de préstamo activa. Solo puedes tener una a la vez.', 'error'); 
+                    return;
+                }
+                // --- FIN DEL FIX ---
+
+                const senderData = await getAccountData(senderId);
+                if (!senderData) { showMessage('No se pudo obtener tu información de cuenta.', 'error'); return; }
+
+                const rScore = senderData.creditScore.average.toFixed(1);
+                const rCount = senderData.creditScore.count;
+                 
+                if (!confirm(`Confirmar Solicitud de Préstamo: $${amount.toFixed(2)} al ${interestRate}% de interés. Tu Score es de ${rScore} ★ (${rCount} votos). ¿Publicar solicitud?`)) {
+                    showMessage('Solicitud de préstamo cancelada.', 'info'); 
+                    return;
+                }
+
+                // [Lógica para Solicitud de Préstamo (Debt Offer)]
+                try {
+                     // Colección pública para solicitudes
+                    const loanRequestsRef = collection(db, `artifacts/${appId}/loan-requests`);
+                    
+                    const requestData = {
+                        debtorId: senderId,
+                        debtorName: senderData.name,
+                        amount: amount,
+                        interestRate: interestRate,
+                        status: 'pending', // Pendiente de que un prestamista la acepte
+                        timestamp: serverTimestamp(),
+                        creditScoreSnapshot: senderData.creditScore.average
+                    };
+                    
+                    await addDoc(loanRequestsRef, requestData);
+                    showMessage('Solicitud de préstamo publicada con éxito. Esperando a un prestamista.', 'success');
+                    switchView('dashboard');
+                } catch (e) {
+                    console.error("Fallo al publicar solicitud:", e.message);
+                    showMessage(`Fallo al publicar la solicitud: ${e.message}`, 'error');
+                }
+                 return;
+
+            }
+
+            // Lógica para Transferencia (transfer) y Oferta de Préstamo (loan)
+            
             // NUEVO: Obtener el score del receptor para el check de préstamo
             if (transactionType === 'loan') {
                  const recipientData = await getAccountData(recipientId);
@@ -606,6 +796,8 @@
             try {
                 const senderData = await getAccountData(senderId);
                 const recipientData = await getAccountData(recipientId);
+                
+                if (!recipientData) { showMessage('ID del receptor no encontrado.', 'error'); return; } // Doble check para Transfer y Loan
 
                 if (transactionType === 'loan') {
                     // Lógica para Oferta de Préstamo (Aún no se mueve el dinero)
@@ -801,7 +993,7 @@
             }
         }
 
-        // --- MANEJO DE OFERTAS DE PRÉSTAMO ---
+        // --- MANEJO DE OFERTAS DE PRÉSTAMO (De Prestamista a Deudor) ---
 
         async function acceptLoanOffer(offerDocId, offerData) {
             if (!currentUser) return;
@@ -893,11 +1085,105 @@
                 showMessage(`Fallo al rechazar la oferta: ${e.message}`, 'error');
             }
         }
+        
+        // [ADICIÓN: Lógica para que un Prestamista acepte una Solicitud de Préstamo]
+        async function lendOnRequest(requestDocId, requestData) {
+            if (!currentUser) return;
+            const lenderId = currentUser.uid; // El prestamista es el usuario actual
+            const debtorId = requestData.debtorId; // El deudor es el que hizo la solicitud
+            const amount = requestData.amount;
+            const interest = requestData.interestRate;
+            const requestDocRef = doc(db, `artifacts/${appId}/loan-requests/${requestDocId}`);
+            
+            // No permitir prestarse a sí mismo
+            if (lenderId === debtorId) {
+                showMessage('No puedes prestar dinero a tu propia solicitud.', 'error'); return;
+            }
+
+            const lenderRef = doc(db, `artifacts/${appId}/users/${lenderId}/account/data`);
+            const debtorRef = doc(db, `artifacts/${appId}/users/${debtorId}/account/data`);
+            
+            try {
+                const debtorData = await getAccountData(debtorId);
+                const lenderData = await getAccountData(lenderId);
+
+                if (!debtorData) { throw new Error("La cuenta del deudor no existe."); }
+                 
+                const dScore = debtorData.creditScore.average.toFixed(1);
+                const dCount = debtorData.creditScore.count;
+                 
+                 // Confirmación para el prestamista
+                 if (!confirm(`El deudor (${debtorData.name}) tiene un Score de ${dScore} ★ (${dCount} votos). Al aceptar, prestarás $${amount.toFixed(2)} al ${interest}% y el dinero se moverá INMEDIATAMENTE. ¿Deseas continuar?`)) {
+                     showMessage('Préstamo cancelado por el prestamista.', 'info'); return;
+                 }
+                 
+                let loanSentDocId = null; // Para guardar el ID de la transacción del prestamista
+                
+                await runTransaction(db, async (transaction) => {
+                    // 1. Mover el dinero
+                    const lenderDoc = await transaction.get(lenderRef);
+                    const debtorDoc = await transaction.get(debtorRef);
+
+                    if (!lenderDoc.exists() || lenderDoc.data().balance < amount) {
+                         throw new Error("Saldo insuficiente para realizar el préstamo.");
+                    }
+
+                    const newLenderBalance = lenderDoc.data().balance - amount;
+                    const newDebtorBalance = debtorDoc.data().balance + amount;
+
+                    transaction.update(lenderRef, { balance: newLenderBalance });
+                    transaction.update(debtorRef, { balance: newDebtorBalance });
+
+                    // 2. Marcar la Solicitud como COMPLETED (para que no aparezca más)
+                    transaction.update(requestDocRef, { status: 'completed', lenderId: lenderId, lenderName: lenderData.name });
+                });
+                
+                // 3. Registrar el 'loan-sent' del prestamista (FUERA DE LA TRANSACCIÓN DE SALDO)
+                const loanData = { 
+                    amount: amount,
+                    senderId: lenderId,
+                    recipientId: debtorId,
+                    interestRate: interest,
+                    originalAmount: amount,
+                    status: 'completed', // Inmediatamente completado
+                    recipientName: debtorData.name
+                };
+                const loanSentDoc = await createTransaction(lenderId, { 
+                    ...loanData, 
+                    type: 'loan-sent',
+                    scoreGiven: false 
+                }); 
+                loanSentDocId = loanSentDoc.id;
+
+
+                // 4. Registrar la DEUDA OFICIAL (loan-debt) en el historial del deudor
+                const debtBaseData = {
+                    ...loanData,
+                    senderName: lenderData.name,
+                    recipientName: debtorData.name,
+                    senderTransactionId: loanSentDocId 
+                };
+                await createTransaction(debtorId, { ...debtBaseData, type: 'loan-debt', status: 'pending' });
+                
+                // 5. Registrar el INGRESO de dinero (loan-received) en el historial del deudor
+                await createTransaction(debtorId, { ...debtBaseData, type: 'loan-received', status: 'completed' });
+                
+                showMessage(`Has aceptado la solicitud. Préstamo de $${amount.toFixed(2)} al ${interest}% realizado a ${debtorData.name}.`, 'success');
+                loadBalance(lenderId); // Cargar saldo del prestamista
+                listenToLoanRequests(lenderId); // Forzar recarga de solicitudes
+            } catch (e) {
+                console.error("Fallo al prestar en solicitud:", e);
+                // Si falla el movemos el dinero, el estado del request sigue 'pending'
+                showMessage(`Fallo al prestar: ${e.message}`, 'error');
+            }
+        }
+        // [/ADICIÓN: Lógica para que un Prestamista acepte una Solicitud de Préstamo]
 
 
         // --- HISTORIAL DE TRANSACCIONES (Ambas Listas) ---
         function listenToTransactions(userId) {
             const transactionsRef = collection(db, `artifacts/${appId}/users/${userId}/transactions`);
+            // Query segura: solo ordena por un campo
             const q = query(transactionsRef, orderBy("timestamp", "desc"));
             
             onSnapshot(q, (snapshot) => {
@@ -1031,6 +1317,10 @@
                         description = `PENALIDAD por cancelación de préstamo (${data.recipientName || 'HUG Bank'})`;
                         amountClass = 'text-red-700 font-extrabold'; amountSign = '-';
                         amountDisplay = data.amount.toFixed(2);
+                    } else if (data.type === 'score-reset-fee') { // [ADICIÓN: Tipo de transacción para el reseteo de score]
+                        description = `Pago por reseteo de Score a HUG Bank`;
+                        amountClass = 'text-red-700'; amountSign = '-';
+                        amountDisplay = data.amount.toFixed(2);
                     }
                     
                     // --- Fin Lógica de Tipos de Transacción ---
@@ -1126,6 +1416,90 @@
                 });
             });
         }
+        
+        // [ADICIÓN: Función para escuchar Solicitudes de Préstamo]
+        function listenToLoanRequests(userId) {
+            const loanRequestsRef = collection(db, `artifacts/${appId}/loan-requests`);
+            
+            // FIX CRÍTICO: Se simplifica la consulta para evitar la necesidad de un índice compuesto (WHERE + ORDER BY).
+            // Se usa un solo WHERE y se filtra/ordena en el cliente.
+            const q = query(
+                loanRequestsRef, 
+                where('status', '==', 'pending')
+            );
+
+            onSnapshot(q, async (snapshot) => {
+                loanRequestsList.innerHTML = '';
+                let hasRequests = false;
+
+                // 1. Filtrar solicitudes propias y transformar a array
+                let requestsToDisplay = [];
+                snapshot.docs.forEach(doc => {
+                    const data = doc.data();
+                    // Omitir solicitudes propias
+                    if (data.debtorId !== userId) { 
+                        requestsToDisplay.push({ id: doc.id, data: data });
+                    }
+                });
+                
+                // 2. Ordenar por timestamp en el cliente (simulando orderBy("timestamp", "desc"))
+                requestsToDisplay.sort((a, b) => {
+                    // Usar .toMillis() si es un Timestamp de Firebase, sino 0
+                    const tsA = a.data.timestamp ? a.data.timestamp.toMillis() : 0;
+                    const tsB = b.data.timestamp ? b.data.timestamp.toMillis() : 0;
+                    return tsB - tsA; // Orden descendente (más recientes primero)
+                });
+                
+
+                for (const request of requestsToDisplay) {
+                    const data = request.data;
+                    const requestDocId = request.id;
+                    
+                    hasRequests = true;
+                    const item = document.createElement('div');
+                    item.className = 'flex flex-col justify-between items-start py-3 px-4 rounded-lg bg-blue-50 border border-blue-200 transaction-item';
+                    
+                    // Obtener la puntuación de crédito del deudor
+                    const debtorData = await getAccountData(data.debtorId);
+                    const scoreText = debtorData && debtorData.creditScore 
+                        ? `${debtorData.creditScore.average.toFixed(1)} ★ (${debtorData.creditScore.count})` 
+                        : 'N/A';
+                    
+                    const amountToReceive = data.amount * (1 + data.interestRate / 100);
+
+                    item.innerHTML = `
+                        <div class="w-full">
+                            <p class="font-bold text-lg text-hug-text-color">Solicitud de: ${data.debtorName || 'Anónimo'}</p>
+                            <p class="text-sm text-gray-700">Monto: <span class="font-semibold text-blue-800">$${data.amount.toFixed(2)}</span> | Interés: <span class="font-semibold">${data.interestRate}%</span></p>
+                            <p class="text-sm text-gray-700 mt-1">Score Deudor: <span class="font-bold text-green-700">${scoreText}</span></p>
+                            <p class="text-xs text-gray-500">Ganancia Potencial (Total): $${amountToReceive.toFixed(2)}</p>
+                        </div>
+                        <button class="lend-on-request-btn mt-3 w-full py-2 px-4 rounded-full text-md font-semibold text-white btn-primary"
+                                data-id="${requestDocId}">
+                            Aceptar Oferta y Prestar
+                        </button>
+                    `;
+                    
+                    loanRequestsList.appendChild(item);
+                }
+
+                if (!hasRequests) {
+                    loanRequestsList.innerHTML = '<p class="text-gray-500 text-sm text-center">No hay solicitudes de préstamo activas en este momento.</p>';
+                }
+                
+                // Listener para Aceptar Oferta (Prestar)
+                loanRequestsList.querySelectorAll('.lend-on-request-btn').forEach(button => {
+                    button.addEventListener('click', async () => {
+                        const docId = button.dataset.id;
+                        const requestDoc = await getDoc(doc(db, `artifacts/${appId}/loan-requests/${docId}`));
+                        if (requestDoc.exists()) {
+                            await lendOnRequest(docId, requestDoc.data());
+                        }
+                    });
+                });
+            });
+        }
+        // [/ADICIÓN: Función para escuchar Solicitudes de Préstamo]
     </script>
 </body>
 </html>
