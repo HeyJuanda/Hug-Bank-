@@ -93,7 +93,8 @@
     
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, updateProfile, signInAnonymously, signInWithCustomToken, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; // Se añade sendPasswordResetEmail
+        // Se elimina onAuthStateChanged para evitar el conflicto anónimo
+        import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile, signInAnonymously, signInWithCustomToken, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"; 
         import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- CONFIGURACIÓN E INICIALIZACIÓN DE FIREBASE ---
@@ -124,7 +125,6 @@
         const authButton = document.getElementById('auth-button');
         const toggleAuthButton = document.getElementById('toggle-auth');
         const messageBox = document.getElementById('message-box');
-        // NUEVO: Referencia al botón de Olvidé mi contraseña
         const forgotPasswordButton = document.getElementById('forgot-password');
         const forgotPasswordContainer = document.getElementById('forgot-password-container');
 
@@ -211,11 +211,20 @@
                 let userCredential;
                 if (isRegister) {
                     userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                    // 1. Guarda el nombre en Firebase Authentication (displayName)
                     await updateProfile(userCredential.user, { displayName: name });
                     
                     const userAccountRef = doc(db, `artifacts/${appId}/users/${userCredential.user.uid}/account/data`);
-                    // Saldo inicial de $0.00 e inicialización del Credit Score
-                    await setDoc(userAccountRef, { balance: 0.00, name: name, email: email, creditScore: { average: 5.0, count: 0 } });
+                    
+                    const accountData = { 
+                        balance: 0.00, 
+                        name: name, // Este es el nombre que se guardará
+                        email: email, 
+                        creditScore: { average: 5.0, count: 0 } 
+                    };
+                    
+                    // CORRECCIÓN APLICADA #1: Se usa setDoc sin merge para una sobrescritura completa.
+                    await setDoc(userAccountRef, accountData);
                     
                     showMessage('Registro exitoso. Redirigiendo...', 'success');
                 } else {
@@ -223,10 +232,10 @@
                     showMessage('Inicio de sesión exitoso. Redirigiendo...', 'success');
                 }
                 
-                // Redirigir al root de la app (que ahora contiene el dashboard)
+                // CORRECCIÓN APLICADA #2: Redirección inmediata (1.5s) después de éxito.
                 setTimeout(() => {
                     window.location.href = '../'; 
-                }, 1000);
+                }, 1500);
 
             } catch (error) {
                 console.error("Error de autenticación:", error);
@@ -248,20 +257,23 @@
             }
         });
 
-        onAuthStateChanged(auth, async (user) => {
+        // INICIALIZACIÓN ANÓNIMA MANUAL para evitar que el 'onAuthStateChanged'
+        // cree un usuario anónimo sobre el usuario recién registrado en un bucle.
+        (async () => {
+            const user = auth.currentUser;
             if (user && !user.isAnonymous) {
-                // Si el usuario ya está autenticado (con cuenta), redirigir directamente al dashboard
+                // Si el usuario ya tiene cuenta, redirigir inmediatamente.
                 window.location.href = '../';
-            } else {
-                // Si NO hay usuario con cuenta (es nulo o anónimo), intentamos autenticar para el entorno (Canvas)
-                if (!user && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            } else if (!user) {
+                 // Si no hay usuario, intentar token o anónimo.
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     try { await signInWithCustomToken(auth, __initial_auth_token); } catch(e) { console.warn("Fallo token. Anonimo..."); try { await signInAnonymously(auth); } catch(e) { console.error("Fallo anónimo."); }}
-                } else if (!user) {
+                } else {
                     try { await signInAnonymously(auth); } catch(e) { console.error("Fallo anónimo."); }
                 }
-                // Si es un usuario anónimo, se queda en esta vista esperando el login/registro.
             }
-        });
+            // Si es un usuario anónimo (que se queda en la vista), no hacemos nada más.
+        })();
     </script>
 </body>
 </html>
