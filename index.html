@@ -200,7 +200,7 @@
                 
                 <div id="interest-rate-field">
                     <label for="interest" class="block text-sm font-medium">Interés (%)</label>
-                    <input type="number" id="interest" min="0" step="0.01" value="5"
+                    <input type="number" id="interest" min="5" step="0.01" value="5"
                            class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
                 </div>
 
@@ -285,6 +285,11 @@
         const recipientIdLabel = document.getElementById('recipient-id-label');
         const transferSubmitBtn = document.getElementById('transfer-submit-btn');
         // [/ADICIÓN: Referencias de UI para Solicitudes]
+        
+        // Referencias de Inputs
+        const amountInput = document.getElementById('amount');
+        const interestInput = document.getElementById('interest');
+
 
         // Referencias del Modal de Puntuación
         const scoreModal = document.getElementById('score-modal');
@@ -316,6 +321,42 @@
             Object.values(views).forEach(view => view.classList.add('hidden'));
             views[target].classList.remove('hidden');
         }
+        
+        // --- LÓGICA DE INTERÉS MÍNIMO DINÁMICO (CORREGIDO) ---
+        
+        function getRequiredMinimumInterest(amount) {
+            // Comisión: 5% (< $50), 8% ($50 <= x < $250), 10% (>= $250)
+            if (amount >= 250) { // CORRECCIÓN: Usar >= 250 para incluir 250 en la tasa del 10%
+                return 10;
+            } else if (amount >= 50) { // CORRECCIÓN: Usar >= 50 para incluir 50 en la tasa del 8%
+                return 8;
+            } else if (amount > 0) {
+                return 5;
+            }
+            return 5; // Default minimum
+        }
+        
+        function updateMinimumInterest() {
+            const transactionType = transactionTypeSelect.value;
+            // Solo aplica para préstamos y solicitudes de préstamo
+            if (transactionType === 'transfer') return; 
+
+            const amount = parseFloat(amountInput.value) || 0;
+            
+            // Si el monto no es válido o es cero, establecer el mínimo a 5%
+            const minInterest = getRequiredMinimumInterest(amount);
+
+            // 1. Actualizar el atributo 'min' del campo de interés
+            interestInput.setAttribute('min', minInterest.toString());
+
+            // 2. Si el valor actual es menor que el nuevo mínimo, actualizar el valor
+            let currentInterest = parseFloat(interestInput.value) || 0;
+            if (currentInterest < minInterest) {
+                interestInput.value = minInterest.toString();
+            }
+        }
+        // --- FIN LÓGICA DE INTERÉS MÍNIMO DINÁMICO ---
+
 
         // --- LÓGICA DEL MODAL DE PUNTUACIÓN ---
         closeBtn.onclick = () => { scoreModal.style.display = 'none'; };
@@ -360,13 +401,16 @@
         document.getElementById('back-to-dashboard-btn').addEventListener('click', () => {
             switchView('dashboard');
         });
+        
+        // [LISTENER: Ajustar el interés mínimo según el monto al escribir]
+        amountInput.addEventListener('input', updateMinimumInterest);
 
-        // [MODIFICACIÓN: Lógica para ocultar/cambiar inputs en Transferir/Solicitar]
+        // [Lógica para ocultar/cambiar inputs en Transferir/Solicitar]
         transactionTypeSelect.addEventListener('change', (e) => {
             const type = e.target.value;
             const isLoanRequest = type === 'loan-request';
             
-            // Campo de Interés siempre visible, pero con un valor por defecto si no es una solicitud o préstamo
+            // Campo de Interés
             interestRateField.classList.toggle('hidden', type === 'transfer');
             
             // Campo de Receptor
@@ -376,10 +420,17 @@
             recipientIdInput.placeholder = isLoanRequest ? 'Se genera automáticamente' : 'ID completo del usuario';
             recipientIdLabel.textContent = isLoanRequest ? 'ID del Solicitante (Eres tú)' : 'ID del Receptor';
             transferSubmitBtn.textContent = isLoanRequest ? 'Publicar Solicitud' : 'Confirmar';
+            
+            // Aplicar la lógica de mínimo de interés al cambiar el tipo de transacción
+            if (type !== 'transfer') {
+                updateMinimumInterest(); 
+            } else {
+                 interestInput.setAttribute('min', '0'); // Restablecer mínimo para transferencias (aunque está oculto)
+            }
         });
         // Inicializar el estado de la vista de transferencia/préstamo
         transactionTypeSelect.dispatchEvent(new Event('change'));
-        // [/MODIFICACIÓN: Lógica para ocultar/cambiar inputs en Transferir/Solicitar]
+        // [/Lógica para ocultar/cambiar inputs en Transferir/Solicitar]
 
         // --- FIREBASE AUTH Y ESTADO ---
         
@@ -394,14 +445,11 @@
             }
         });
 
-        // Bloque de autenticación: ELIMINAMOS la lectura directa de user.displayName aquí.
+        // Bloque de autenticación
         onAuthStateChanged(auth, async (user) => {
             if (user && !user.isAnonymous) { // Solo usuarios autenticados con cuenta
                 currentUser = user;
                 document.getElementById('user-id-display').textContent = user.uid;
-                
-                // *** CORRECCIÓN #2: Eliminado el uso de user.displayName aquí.
-                // loadBalance se encargará de establecer el nombre desde Firestore.
                 
                 loadBalance(user.uid);
                 loadCreditScore(user.uid); // Cargar puntuación de crédito
@@ -698,14 +746,21 @@
                 showMessage('No puedes transferir a tu propia cuenta.', 'error'); return; 
             }
             if (amount <= 0 || isNaN(amount)) { showMessage('Monto no válido.', 'error'); return; }
+            
+            // VALIDACIÓN: Interés mínimo requerido según el monto (usa la lógica dinámica)
+            const minRequiredInterest = getRequiredMinimumInterest(amount);
+            if (transactionType !== 'transfer' && interest < minRequiredInterest) {
+                showMessage(`El interés mínimo para este monto es del ${minRequiredInterest}%.`, 'error'); return;
+            }
+
 
             if (transactionType === 'loan-request') {
                 
-                const interestRateInput = document.getElementById('interest');
-                const interestRate = parseFloat(interestRateInput.value);
-
-                if (isNaN(interestRate) || interestRate < 1 || interestRate > 50) {
-                    return showMessage('El interés debe ser entre 1% y 50%.', 'error');
+                const interestRate = interest; // Ya está definido como 'interest'
+                
+                // MODIFICADO: Interés mínimo 5%, máximo 50%
+                if (isNaN(interestRate) || interestRate > 50) {
+                    return showMessage('El interés máximo para solicitudes debe ser del 50%.', 'error');
                 }
 
                 // --- FIX: SOLUCIÓN AL ERROR DEL ÍNDICE (Check de una sola solicitud activa) ---
@@ -876,70 +931,78 @@
             }
         });
         
-        // --- REEMBOLSO DE PRÉSTAMO (Pago) CON COMISIÓN DEL 5% DEL INTERÉS ---
+        // --- REEMBOLSO DE PRÉSTAMO (Pago) CON COMISIÓN BANCARIA ESCALONADA SOBRE EL TOTAL (CORREGIDO) ---
         async function payLoan(loanDocId, loanData) {
             if (!currentUser) return;
-            
             const originalAmount = loanData.originalAmount;
             // Interés en formato decimal (ej: 5% -> 0.05)
-            const interestRate = loanData.interestRate / 100; 
-            
+            const interestRateDecimal = loanData.interestRate / 100; 
+
             // 1. Cálculo de Montos
-            const interestAmount = originalAmount * interestRate; // Interés bruto
-            const bankCommissionRate = 0.05; // 5% para el banco (MODIFICADO)
-            const bankCommission = interestAmount * bankCommissionRate; // Comisión del banco
-            const netInterestToLender = interestAmount - bankCommission; // Interés neto para el prestamista
-            
+            const interestAmount = originalAmount * interestRateDecimal; // Interés bruto
             const amountToPay = originalAmount + interestAmount; // Monto total que paga el deudor (Capital + Interés Bruto)
-            let amountLenderReceives = originalAmount + netInterestToLender; // Monto total que recibe el prestamista (Capital + Interés Neto)
             
-            // Si por algún error el interés neto es negativo, se asegura que al menos reciba el capital.
-            if (amountLenderReceives < originalAmount) {
-                 amountLenderReceives = originalAmount;
-                 // bankCommission = interestAmount; // En este caso, el banco toma todo el interés bruto
+            // LÓGICA DE COMISIÓN BANCARIA ESCALONADA (Basada en el Monto Original del Préstamo)
+            let bankCommissionRate;
+            
+            // Comisión: 5% (< $50), 8% ($50 <= x < $250), 10% (>= $250)
+            if (originalAmount >= 250) { // CORRECCIÓN
+                bankCommissionRate = 0.10; // 10% si >= $250
+            } else if (originalAmount >= 50) { // CORRECCIÓN
+                bankCommissionRate = 0.08; // 8% si $50 <= Préstamo < $250
+            } else {
+                bankCommissionRate = 0.05; // 5% si Préstamo < $50
             }
+
+            // El cambio CRÍTICO: La comisión se calcula sobre el MONTO TOTAL A PAGAR (Capital + Interés Bruto)
+            const bankCommission = amountToPay * bankCommissionRate; // Comisión del banco sobre el TOTAL
+            
+            // El prestamista recibe el TOTAL pagado menos la comisión del banco
+            const amountLenderReceives = amountToPay - bankCommission;
             
             const payerId = currentUser.uid; // El usuario que paga (el deudor)
             const recipientId = loanData.senderId; // El usuario que recibe (el prestamista original)
 
             const payerRef = doc(db, `artifacts/${appId}/users/${payerId}/account/data`);
             const recipientRef = doc(db, `artifacts/${appId}/users/${recipientId}/account/data`);
+            
             // El documento de deuda que se va a marcar como pagado (es el documento loan-debt del deudor)
-            const loanDocRef = doc(db, `artifacts/${appId}/users/${payerId}/transactions/${loanDocId}`); 
+            const loanDocRef = doc(db, `artifacts/${appId}/users/${payerId}/transactions/${loanDocId}`);
             // El documento 'loan-sent' del prestamista que se va a marcar como pagado
             const senderLoanSentRef = doc(db, `artifacts/${appId}/users/${recipientId}/transactions/${loanData.senderTransactionId}`);
-
-
+            
             try {
                 await runTransaction(db, async (transaction) => {
                     const payerDoc = await transaction.get(payerRef);
                     if (!payerDoc.exists()) throw new Error("Documento de la cuenta de pago no existe.");
-
+                    
                     const payerBalance = payerDoc.data().balance;
                     if (payerBalance < amountToPay) throw new Error("Saldo insuficiente para pagar el préstamo.");
-
+                    
                     // 2. Actualizar saldos
-                    const newPayerBalance = payerBalance - amountToPay;
-                    // El prestamista recibe el monto con el 5% de comisión descontado del interés
-                    const newRecipientBalance = (await transaction.get(recipientRef)).data().balance + amountLenderReceives;
+                    newPayerBalance = payerBalance - amountToPay;
+                    const recipientDoc = await transaction.get(recipientRef);
+                    // El prestamista recibe el monto con la comisión descontada del total
+                    const newRecipientBalance = recipientDoc.data().balance + amountLenderReceives; 
 
                     transaction.update(payerRef, { balance: newPayerBalance });
                     transaction.update(recipientRef, { balance: newRecipientBalance });
-                    
+
                     // 3. Marcar deuda como pagada en el historial del deudor (esto hace desaparecer el botón Pagar)
                     transaction.update(loanDocRef, { 
                         status: 'paid', 
                         paidAmount: amountToPay, // El deudor paga el total
+                        bankCommission: bankCommission, 
                         paidDate: serverTimestamp() 
                     });
                     
                     // 4. Marcar la transacción del prestamista como pagada
                     transaction.update(senderLoanSentRef, { 
                         status: 'completed-paid', 
-                        paidAmount: amountLenderReceives, // El prestamista registra el total que recibió
-                        paidDate: serverTimestamp(),
-                        bankCommission: bankCommission, // Nuevo campo para el registro de la comisión
-                        netInterest: netInterestToLender // Nuevo campo para el registro del interés neto
+                        paidAmount: amountToPay, // Se registra el total pagado por el deudor para fines contables
+                        bankCommission: bankCommission, // Registro de la comisión
+                        amountLenderReceived: amountLenderReceives, // Registro del monto neto
+                        paidDate: serverTimestamp()
                     });
                 });
                 
@@ -947,7 +1010,7 @@
                 const recipientData = await getAccountData(recipientId);
 
                 // 5. Registrar el pago en el historial del deudor (Salida de dinero - Negativo)
-                const paymentData = {
+                await createTransaction(payerId, {
                     amount: amountToPay,
                     senderId: payerId,
                     recipientId: recipientId,
@@ -956,11 +1019,10 @@
                     interestRate: loanData.interestRate,
                     senderName: payerData.name,
                     recipientName: recipientData.name
-                };
-                await createTransaction(payerId, paymentData); 
+                }); 
 
-                // 6. Registrar el cobro en el historial del prestamista (Entrada de dinero - Positivo)
-                const receivedData = {
+                // 6. Registrar el cobro en el historial del prestamista (Entrada de dinero - Positivo: monto neto)
+                await createTransaction(recipientId, {
                     amount: amountLenderReceives, // El monto neto recibido por el prestamista
                     senderId: payerId,
                     recipientId: recipientId,
@@ -970,8 +1032,7 @@
                     senderName: payerData.name,
                     recipientName: recipientData.name,
                     bankCommission: bankCommission // Registro de la comisión
-                };
-                await createTransaction(recipientId, receivedData); 
+                }); 
                 
                 // 7. Registrar la comisión del banco (Transacción interna - Opcional para un entorno real)
                 await createTransaction('hug-bank-fee-account', {
@@ -985,7 +1046,7 @@
                     recipientName: 'HUG Bank'
                 });
 
-                showMessage('Préstamo pagado exitosamente. Se ha aplicado una comisión del 5% al interés para el banco.', 'success'); // MENSAJE MODIFICADO
+                showMessage(`Préstamo pagado exitosamente. Se ha aplicado una comisión del ${(bankCommissionRate * 100).toFixed(0)}% ($${bankCommission.toFixed(2)}) al total para el banco.`, 'success'); 
                 loadBalance(payerId);
             } catch (e) {
                 console.error("Fallo de pago de préstamo:", e);
@@ -1465,14 +1526,30 @@
                         ? `${debtorData.creditScore.average.toFixed(1)} ★ (${debtorData.creditScore.count})` 
                         : 'N/A';
                     
-                    const amountToReceive = data.amount * (1 + data.interestRate / 100);
+                    // Cálculo de la ganancia potencial
+                    const interestRateDecimal = data.interestRate / 100;
+                    const amountToPay = data.amount * (1 + interestRateDecimal); // Total deudor paga
+                    
+                    // Calcular la comisión escalonada sobre el total (LÓGICA CORREGIDA)
+                    let commissionRate;
+                    if (data.amount >= 250) { // CORRECCIÓN
+                        commissionRate = 0.10;
+                    } else if (data.amount >= 50) { // CORRECCIÓN
+                        commissionRate = 0.08;
+                    } else {
+                        commissionRate = 0.05;
+                    }
+                    
+                    const bankCommission = amountToPay * commissionRate;
+                    const amountToReceive = amountToPay - bankCommission;
 
                     item.innerHTML = `
                         <div class="w-full">
                             <p class="font-bold text-lg text-hug-text-color">Solicitud de: ${data.debtorName || 'Anónimo'}</p>
                             <p class="text-sm text-gray-700">Monto: <span class="font-semibold text-blue-800">$${data.amount.toFixed(2)}</span> | Interés: <span class="font-semibold">${data.interestRate}%</span></p>
                             <p class="text-sm text-gray-700 mt-1">Score Deudor: <span class="font-bold text-green-700">${scoreText}</span></p>
-                            <p class="text-xs text-gray-500">Ganancia Potencial (Total): $${amountToReceive.toFixed(2)}</p>
+                            <p class="text-xs text-gray-500">Comisión Estimada: $${bankCommission.toFixed(2)} (${(commissionRate * 100).toFixed(0)}% del Total)</p>
+                            <p class="text-xs text-gray-500">Ganancia Potencial (Neto): $${amountToReceive.toFixed(2)}</p>
                         </div>
                         <button class="lend-on-request-btn mt-3 w-full py-2 px-4 rounded-full text-md font-semibold text-white btn-primary"
                                 data-id="${requestDocId}">
