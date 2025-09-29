@@ -388,6 +388,7 @@
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     const balance = data.balance;
+                    // Aquí es donde el saldo negativo se mostrará correctamente si aplica
                     balanceDisplay.textContent = `$${balance.toFixed(2)}`;
                 } else {
                     // Si llega aquí sin cuenta, debería ser un error, pero forzamos la inicialización
@@ -430,11 +431,13 @@
             return await addDoc(transactionsRef, { ...transactionData, timestamp: serverTimestamp() });
         }
         
-        // --- FUNCIÓN ADICIONAL: Cancelar Préstamo por Prestamista ---
+        // --- FUNCIÓN ADICIONAL: Cancelar Préstamo por Prestamista (CON PENALIDAD DEL 5% DEL TOTAL) ---
         async function cancelLoanByLender(lenderTransactionId, recipientId) {
             if (!currentUser) return;
             const lenderId = currentUser.uid;
             
+            const lenderRef = doc(db, `artifacts/${appId}/users/${lenderId}/account/data`); // Referencia a la cuenta del prestamista
+
             // 1. Encontrar el documento 'loan-sent' del prestamista
             const lenderDocRef = doc(db, `artifacts/${appId}/users/${lenderId}/transactions/${lenderTransactionId}`);
             const lenderDocSnap = await getDoc(lenderDocRef);
@@ -444,62 +447,91 @@
             const loanData = lenderDocSnap.data();
             
             // 2. Buscar el documento 'loan-debt' correspondiente del deudor.
-            // Buscamos la DEUDA PENDIENTE que tiene como referencia al loan-sent
             const debtQuery = query(
                 collection(db, `artifacts/${appId}/users/${recipientId}/transactions`),
                 where('type', '==', 'loan-debt'),
                 where('senderTransactionId', '==', lenderTransactionId),
                 where('status', '==', 'pending')
             );
-            // Ejecutamos la consulta (CORRECCIÓN: Usar getDocs en un Query)
             const debtSnapshot = await getDocs(debtQuery);
             const debtDoc = debtSnapshot.docs.length > 0 ? debtSnapshot.docs[0] : null;
             const debtDocRef = debtDoc ? doc(db, `artifacts/${appId}/users/${recipientId}/transactions/${debtDoc.id}`) : null;
 
             // 3. Iniciar Transacción
             try {
-                await runTransaction(db, async (transaction) => {
-                    // Monto total del préstamo
-                    const amountToPay = loanData.originalAmount * (1 + loanData.interestRate / 100);
+                // Cálculo de la penalidad: 5% del TOTAL (Capital + Interés)
+                const interestRateDecimal = loanData.interestRate / 100;
+                const amountToPay = loanData.originalAmount * (1 + interestRateDecimal);
+                const penaltyRate = 0.05; // 5% de penalidad para el prestamista
+                const penaltyAmount = amountToPay * penaltyRate; // 5% del total (Capital + Interés)
 
-                    // 3.1. Marcar el 'loan-sent' del prestamista como pagado (completed-paid)
-                    transaction.update(lenderDocRef, { status: 'completed-paid', paidAmount: amountToPay, paidDate: serverTimestamp() });
+                await runTransaction(db, async (transaction) => {
+                    const lenderDoc = await transaction.get(lenderRef);
+                    if (!lenderDoc.exists()) throw new Error("Documento de la cuenta del prestamista no existe.");
                     
-                    // 3.2. Marcar el 'loan-debt' del deudor como pagado, si existe.
+                    const lenderBalance = lenderDoc.data().balance;
+
+                    // DEDUCCIÓN DE LA PENALIDAD DEL PRESTAMISTA
+                    // IMPORTANTE: NO SE HACE CHEQUEO DE SALDO. SE PERMITE SALDO NEGATIVO.
+                    const newLenderBalance = lenderBalance - penaltyAmount;
+
+                    // 1. DEDUCIR LA PENALIDAD Y ACTUALIZAR SALDO DEL PRESTAMISTA
+                    transaction.update(lenderRef, { balance: newLenderBalance });
+                    
+                    // 2. Marcar el 'loan-sent' del prestamista como pagado/penalizado
+                    transaction.update(lenderDocRef, { 
+                        status: 'completed-paid-penalized', // Nuevo estado
+                        paidAmount: amountToPay, 
+                        paidDate: serverTimestamp(),
+                        penaltyAmount: penaltyAmount 
+                    });
+                    
+                    // 3. Marcar el 'loan-debt' del deudor como pagado, si existe.
                     if (debtDocRef) {
                         transaction.update(debtDocRef, { status: 'paid-by-lender', paidAmount: amountToPay, paidDate: serverTimestamp() });
                     }
                 });
 
                 // 4. Crear transacciones de historial
-                const amountToPay = loanData.originalAmount * (1 + loanData.interestRate / 100);
                 const recipientData = await getAccountData(recipientId);
                 const lenderData = await getAccountData(lenderId);
 
-                 // Registrar el cobro en el historial del prestamista (Entrada de dinero por la cancelación)
+                 // A. Registrar la PENALIDAD en el historial del prestamista (Salida de dinero - Negativo)
+                await createTransaction(lenderId, {
+                    amount: penaltyAmount,
+                    senderId: lenderId,
+                    recipientId: 'HUG Bank',
+                    type: 'lender-cancellation-penalty', // Salida de dinero por penalidad (NEGATIVO)
+                    originalLoanId: lenderTransactionId,
+                    interestRate: loanData.interestRate,
+                    senderName: lenderData.name,
+                    recipientName: 'HUG Bank'
+                }); 
+                
+                 // B. Registrar el "cobro" del préstamo en el historial del prestamista (Entrada de dinero por la cancelación)
                 await createTransaction(lenderId, {
                     amount: amountToPay,
-                    senderId: recipientId, // Quien debería haber pagado
+                    senderId: recipientId, 
                     recipientId: lenderId,
-                    type: 'loan-paid-cancellation', // Entrada de dinero (Cobro de préstamo por cancelación)
+                    type: 'loan-paid-cancellation', // Entrada de dinero (Cobro de préstamo por cancelación - Solo Historial)
                     originalLoanId: lenderTransactionId,
                     interestRate: loanData.interestRate,
                     senderName: recipientData.name,
                     recipientName: lenderData.name
                 }); 
-                 // Registrar el pago en el historial del deudor (Salida de dinero - Negativo, solo historial, no afecta saldo)
+                 // C. Registrar el pago en el historial del deudor (Solo Historial)
                 await createTransaction(recipientId, {
                     amount: amountToPay,
                     senderId: lenderId,
                     recipientId: recipientId,
-                    type: 'loan-payment-lender-cancellation', // El deudor no movió dinero, solo se registra el pago forzado.
+                    type: 'loan-payment-lender-cancellation', 
                     originalLoanId: debtDoc ? debtDoc.id : 'N/A',
                     interestRate: loanData.interestRate,
                     senderName: lenderData.name,
                     recipientName: recipientData.name
                 }); 
 
-                showMessage('Préstamo marcado como PAGADO. Ahora puedes puntuar al deudor.', 'success');
+                showMessage(`Préstamo marcado como PAGADO. Se le ha aplicado una penalidad del 5% ($${penaltyAmount.toFixed(2)}) de la deuda total ($${amountToPay.toFixed(2)}) en su saldo. Ahora puedes puntuar al deudor.`, 'success');
                 loadBalance(lenderId);
                 listenToTransactions(lenderId); // Forzar recarga de transacciones
             } catch (e) {
@@ -652,11 +684,28 @@
             }
         });
         
-        // --- REEMBOLSO DE PRÉSTAMO (Pago) ---
+        // --- REEMBOLSO DE PRÉSTAMO (Pago) CON COMISIÓN DEL 5% DEL INTERÉS ---
         async function payLoan(loanDocId, loanData) {
             if (!currentUser) return;
-            // Cálculo del monto total a pagar (Capital + Interés)
-            const amountToPay = loanData.originalAmount * (1 + loanData.interestRate / 100); 
+            
+            const originalAmount = loanData.originalAmount;
+            // Interés en formato decimal (ej: 5% -> 0.05)
+            const interestRate = loanData.interestRate / 100; 
+            
+            // 1. Cálculo de Montos
+            const interestAmount = originalAmount * interestRate; // Interés bruto
+            const bankCommissionRate = 0.05; // 5% para el banco (MODIFICADO)
+            const bankCommission = interestAmount * bankCommissionRate; // Comisión del banco
+            const netInterestToLender = interestAmount - bankCommission; // Interés neto para el prestamista
+            
+            const amountToPay = originalAmount + interestAmount; // Monto total que paga el deudor (Capital + Interés Bruto)
+            let amountLenderReceives = originalAmount + netInterestToLender; // Monto total que recibe el prestamista (Capital + Interés Neto)
+            
+            // Si por algún error el interés neto es negativo, se asegura que al menos reciba el capital.
+            if (amountLenderReceives < originalAmount) {
+                 amountLenderReceives = originalAmount;
+                 // bankCommission = interestAmount; // En este caso, el banco toma todo el interés bruto
+            }
             
             const payerId = currentUser.uid; // El usuario que paga (el deudor)
             const recipientId = loanData.senderId; // El usuario que recibe (el prestamista original)
@@ -677,24 +726,35 @@
                     const payerBalance = payerDoc.data().balance;
                     if (payerBalance < amountToPay) throw new Error("Saldo insuficiente para pagar el préstamo.");
 
+                    // 2. Actualizar saldos
                     const newPayerBalance = payerBalance - amountToPay;
-                    const newRecipientBalance = (await transaction.get(recipientRef)).data().balance + amountToPay;
+                    // El prestamista recibe el monto con el 5% de comisión descontado del interés
+                    const newRecipientBalance = (await transaction.get(recipientRef)).data().balance + amountLenderReceives;
 
-                    // 1. Actualizar saldos
                     transaction.update(payerRef, { balance: newPayerBalance });
                     transaction.update(recipientRef, { balance: newRecipientBalance });
                     
-                    // 2. Marcar deuda como pagada en el historial del deudor (esto hace desaparecer el botón Pagar)
-                    transaction.update(loanDocRef, { status: 'paid', paidAmount: amountToPay, paidDate: serverTimestamp() });
+                    // 3. Marcar deuda como pagada en el historial del deudor (esto hace desaparecer el botón Pagar)
+                    transaction.update(loanDocRef, { 
+                        status: 'paid', 
+                        paidAmount: amountToPay, // El deudor paga el total
+                        paidDate: serverTimestamp() 
+                    });
                     
-                    // 3. Marcar la transacción del prestamista como pagada
-                    transaction.update(senderLoanSentRef, { status: 'completed-paid', paidAmount: amountToPay, paidDate: serverTimestamp() });
+                    // 4. Marcar la transacción del prestamista como pagada
+                    transaction.update(senderLoanSentRef, { 
+                        status: 'completed-paid', 
+                        paidAmount: amountLenderReceives, // El prestamista registra el total que recibió
+                        paidDate: serverTimestamp(),
+                        bankCommission: bankCommission, // Nuevo campo para el registro de la comisión
+                        netInterest: netInterestToLender // Nuevo campo para el registro del interés neto
+                    });
                 });
                 
                 const payerData = await getAccountData(payerId);
                 const recipientData = await getAccountData(recipientId);
 
-                // 4. Registrar el pago en el historial del deudor (Salida de dinero - Negativo)
+                // 5. Registrar el pago en el historial del deudor (Salida de dinero - Negativo)
                 const paymentData = {
                     amount: amountToPay,
                     senderId: payerId,
@@ -707,20 +767,33 @@
                 };
                 await createTransaction(payerId, paymentData); 
 
-                // 5. Registrar el pago en el historial del prestamista (Entrada de dinero - Positivo)
+                // 6. Registrar el cobro en el historial del prestamista (Entrada de dinero - Positivo)
                 const receivedData = {
-                    amount: amountToPay,
+                    amount: amountLenderReceives, // El monto neto recibido por el prestamista
                     senderId: payerId,
                     recipientId: recipientId,
                     type: 'loan-paid', // Entrada de dinero (Cobro de préstamo)
                     originalLoanId: loanDocId,
                     interestRate: loanData.interestRate,
                     senderName: payerData.name,
-                    recipientName: recipientData.name
+                    recipientName: recipientData.name,
+                    bankCommission: bankCommission // Registro de la comisión
                 };
                 await createTransaction(recipientId, receivedData); 
+                
+                // 7. Registrar la comisión del banco (Transacción interna - Opcional para un entorno real)
+                await createTransaction('hug-bank-fee-account', {
+                    amount: bankCommission,
+                    senderId: payerId,
+                    recipientId: 'HUG Bank',
+                    type: 'bank-commission-fee',
+                    originalLoanId: loanDocId,
+                    interestRate: loanData.interestRate,
+                    senderName: payerData.name,
+                    recipientName: 'HUG Bank'
+                });
 
-                showMessage('Préstamo pagado exitosamente. El prestamista ahora puede puntuar tu comportamiento.', 'success');
+                showMessage('Préstamo pagado exitosamente. Se ha aplicado una comisión del 5% al interés para el banco.', 'success'); // MENSAJE MODIFICADO
                 loadBalance(payerId);
             } catch (e) {
                 console.error("Fallo de pago de préstamo:", e);
@@ -859,8 +932,16 @@
                             statusText = 'Aceptado. Esperando pago.';
                             // Botón de Cancelación/Pago por Prestamista
                             actionButtonsHtml += `<button class="cancel-loan-btn bg-yellow-500 text-white px-3 py-1 rounded-full text-xs font-semibold hover:bg-yellow-600 mr-2" data-id="${doc.id}" data-recipient-id="${data.recipientId}">Marcar Pagado</button>`;
-                        } else if (data.status === 'completed-paid') { 
+                        } else if (data.status === 'completed-paid' || data.status === 'completed-paid-penalized') { // Estado para pago normal o penalizado
                             statusText = 'Pagado/Cancelado.';
+                            
+                            // Información de comisión/penalidad (MODIFICADO)
+                            if (data.bankCommission) {
+                                description += ` (Comisión: $${data.bankCommission.toFixed(2)})`;
+                            } else if (data.penaltyAmount) {
+                                description += ` (Penalidad aplicada: $${data.penaltyAmount.toFixed(2)})`;
+                            }
+                            
                             // Botón de Puntuación
                             if (!data.scoreGiven) {
                                 actionButtonsHtml += `<button class="score-btn bg-blue-500 text-white px-3 py-1 rounded-full text-xs font-semibold hover:bg-blue-600" data-id="${doc.id}" data-recipient-id="${data.recipientId}" data-recipient-name="${data.recipientName}">Puntuar Deudor</button>`;
@@ -872,8 +953,8 @@
                         }
                         
                         description = `Préstamo a ${data.recipientName || 'Desconocido'} (Estado: ${statusText})`;
-                        amountClass = data.status === 'completed' || data.status === 'completed-paid' ? 'text-red-500' : 'text-gray-500'; 
-                        amountSign = data.status === 'completed' || data.status === 'completed-paid' ? '-' : '';
+                        amountClass = data.status === 'completed' || data.status === 'completed-paid' || data.status === 'completed-paid-penalized' ? 'text-red-500' : 'text-gray-500'; 
+                        amountSign = data.status === 'completed' || data.status === 'completed-paid' || data.status === 'completed-paid-penalized' ? '-' : '';
                         amountDisplay = data.originalAmount.toFixed(2);
 
                     } else if (data.type === 'loan-payment') {
@@ -884,8 +965,14 @@
                     } else if (data.type === 'loan-paid' || data.type === 'loan-paid-cancellation') {
                         // Cobro recibido por el PRESTAMISTA
                         description = `Cobro de Préstamo de ${data.senderName || 'Desconocido'} (Int: ${data.interestRate}%)`;
+                        // Muestra el monto neto recibido
                         amountDisplay = data.amount.toFixed(2);
                         amountClass = 'text-green-500'; amountSign = '+';
+                        // Información de comisión
+                        if (data.bankCommission) {
+                            description += ` (Comisión: $${data.bankCommission.toFixed(2)})`;
+                        }
+
                     } else if (data.type === 'loan-offer') {
                         // Oferta de préstamo (Solo muestra los botones para ACEPTAR/RECHAZAR)
                         description = `OFERTA de ${data.lenderName || 'Anónimo'} $${data.amount.toFixed(2)} (Int: ${data.interestRate}%)`;
@@ -935,6 +1022,14 @@
                     } else if (data.type === 'loan-payment-lender-cancellation') {
                         description = `Préstamo cancelado/pagado a ${data.senderName || 'Desconocido'} (historial de pago)`;
                         amountClass = 'text-gray-500 line-through'; amountSign = '-';
+                        amountDisplay = data.amount.toFixed(2);
+                    } else if (data.type === 'bank-commission-fee') {
+                        description = `Comisión del banco por interés de préstamo de ${data.senderName || 'Deudor'}`;
+                        amountClass = 'text-gray-500'; amountSign = '+'; // Positivo para el banco
+                        amountDisplay = data.amount.toFixed(2);
+                    } else if (data.type === 'lender-cancellation-penalty') { // NUEVO TIPO
+                        description = `PENALIDAD por cancelación de préstamo (${data.recipientName || 'HUG Bank'})`;
+                        amountClass = 'text-red-700 font-extrabold'; amountSign = '-';
                         amountDisplay = data.amount.toFixed(2);
                     }
                     
@@ -1008,7 +1103,7 @@
                         const loanDocId = button.dataset.id;
                         const recipientId = button.dataset.recipientId;
                         // Se usa confirm() como la única excepción para la confirmación crítica del flujo de negocio
-                        if (confirm('¿Estás seguro de que deseas marcar este préstamo como PAGADO? Esto cancelará la deuda activa del deudor y lo habilitará para la puntuación.')) {
+                        if (confirm('¡ADVERTENCIA! Si marcas este préstamo como PAGADO sin que el deudor lo haya hecho, se te penalizará con el 5% del monto total de la deuda, y se deducirá de tu saldo (puede volverse negativo). ¿Estás seguro?')) {
                             await cancelLoanByLender(loanDocId, recipientId);
                         }
                     });
