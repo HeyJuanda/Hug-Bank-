@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="shortcut icon" href="bank.png" />
+    <link rel="shortcut icon" href="../bank.png" />
     <title>HUG Bank - Sistema de Pago para Negocios (POS)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -38,22 +38,51 @@
         .btn-danger:hover {
             background-color: #c82333;
         }
-        .header-bar {
-            background-color: var(--hug-header);
-            color: white;
-            padding: 1rem 1.5rem;
-            border-radius: 0.75rem 0.75rem 0 0;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        .product-card {
+             cursor: pointer;
+             transition: all 0.2s ease;
+             border: 2px solid transparent;
+        }
+        .product-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-color: var(--hug-primary);
+        }
+        input[type="text"][id="product-emoji"] {
+            font-size: 1.5rem;
+            text-align: center;
+        }
+        
+        /* Estilo para las opciones múltiples (Radio Buttons) */
+        .radio-option {
+            display: none;
+        }
+        .radio-label {
+            display: block;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid #e5e7eb;
+            font-weight: 600;
+        }
+        .radio-label:hover {
+            border-color: #93c5fd; /* blue-300 */
+        }
+        .radio-option:checked + .radio-label {
+            background-color: #eff6ff; /* blue-50 */
+            border-color: var(--hug-primary); /* blue-500 */
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
         }
     </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4 md:p-8">
 
-    <div id="app" class="w-full max-w-lg">
+    <div id="app" class="w-full max-w-5xl">
         
-        <div id="business-login" class="bg-card p-6 md:p-8">
+        <div id="business-login" class="bg-card p-6 md:p-8 max-w-lg mx-auto">
             <h2 class="text-3xl font-bold mb-6 text-center text-hug-header">
-                 <img src="bank.svg" alt="POS Logo" class="inline h-10 w-10 mr-2 align-middle">
+                 <img src="../bank.svg" alt="POS Logo" class="inline h-10 w-10 mr-2 align-middle">
                  Acceso de Negocio (POS)
             </h2>
             <form id="business-login-form" class="space-y-4">
@@ -74,84 +103,182 @@
             </form>
         </div>
         
-        <div id="charge-setup" class="hidden bg-card p-6 md:p-8">
-            <div class="flex justify-between items-center mb-6">
-                 <h2 class="text-2xl font-bold text-hug-header">Cobro en Caja</h2>
+        <div id="charge-setup" class="hidden bg-card p-0 md:p-0">
+            <div class="p-4 md:p-6 border-b flex justify-between items-center">
+                 <div>
+                    <h2 class="text-2xl font-bold text-hug-header">Punto de Venta</h2>
+                    <p class="text-sm">Bienvenido, <span id="business-name-display" class="font-bold"></span></p>
+                 </div>
                  <button id="business-logout-btn" class="py-1 px-3 rounded-full text-sm font-semibold text-white bg-gray-500 hover:bg-gray-700">
                     Cerrar Sesión
                  </button>
             </div>
-            
-            <p class="mb-4 text-sm">Bienvenido, <span id="business-name-display" class="font-bold"></span></p>
 
-            <form id="merchant-form" class="space-y-6">
-                <p class="text-center text-lg font-medium">Paso 1: Ingresar Monto a Cobrar</p>
-                <div>
-                    <label for="charge-amount" class="block text-sm font-medium">Monto Total ($)</label>
-                    <input type="number" id="charge-amount" required **min="0.01"** step="0.01" placeholder="Ej: 45.99"
-                           class="mt-1 block w-full px-3 py-3 border rounded-lg text-2xl font-bold focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                <button type="submit" class="w-full py-3 px-4 rounded-full text-lg font-semibold text-white btn-primary">
-                    Cobrar al Cliente
-                </button>
-            </form>
-        </div>
-
-        <div id="customer-login" class="hidden bg-card p-6 md:p-8">
-            <h2 class="text-2xl font-bold mb-2 text-center">
-                Monto a Pagar: <span id="display-charge-amount-login" class="text-hug-danger">$0.00</span>
-            </h2>
-            <p class="text-center text-lg font-medium mb-6">Paso 2: Cliente debe Iniciar Sesión</p>
-
-            <form id="customer-login-form" class="space-y-4">
-                <div>
-                    <label for="customer-email" class="block text-sm font-medium">Correo Electrónico del Cliente</label>
-                    <input type="email" id="customer-email" required placeholder="tu.correo@ejemplo.com"
-                           class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                <div>
-                    <label for="customer-password" class="block text-sm font-medium">Contraseña del Cliente</label>
-                    <input type="password" id="customer-password" required placeholder="********"
-                           class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
-                </div>
-                <button type="submit" class="w-full py-3 px-4 rounded-full text-lg font-semibold text-white btn-primary">
-                    Continuar al Pago
-                </button>
-            </form>
-            <button id="cancel-login-btn" class="w-full mt-4 py-3 px-4 rounded-full text-lg font-semibold btn-danger">
-                Cancelar Transacción
-            </button>
-        </div>
-
-        <div id="payment-confirmation" class="hidden bg-card p-6 md:p-8 text-center">
-             <h2 class="text-3xl font-extrabold mb-4 text-hug-header">Confirmación de Pago</h2>
-
-             <div class="bg-blue-50 p-6 rounded-xl border border-blue-200 mb-6">
-                <p class="text-sm text-blue-600">Total a Cobrar</p>
-                <h3 class="text-5xl font-extrabold mt-1 text-hug-danger" id="display-charge-amount-confirm">$0.00</h3>
-                <p class="text-sm text-blue-600 mt-2">Tu Saldo Actual: <span id="display-current-balance" class="font-bold">$0.00</span></p>
-             </div>
-             
-             <p class="mb-6 text-lg">Paso 3: Aprobar el Pago por <span id="customer-name-display" class="font-bold">Cliente</span></p>
-
-            <button id="confirm-payment-btn" class="w-full py-3 px-4 rounded-full text-lg font-semibold text-white btn-primary">
-                Aprobar Pago
-            </button>
-            <button id="cancel-payment-btn" class="w-full mt-4 py-3 px-4 rounded-full text-lg font-semibold btn-danger">
-                Cancelar Transacción
-            </button>
-        </div>
+            <div class="grid grid-cols-1 md:grid-cols-5 min-h-[500px]">
+                
+                <div class="md:col-span-3 p-4 md:p-6 border-r flex flex-col">
+                    <div id="dynamic-pos-panel" class="flex-grow flex flex-col">
+                        
+                        <div id="product-catalog-view"> 
+                            <h3 class="text-xl font-semibold mb-3 flex justify-between items-center">
+                                Catálogo de Productos
+                                <button id="toggle-add-product-form-btn" class="text-white bg-green-500 hover:bg-green-600 rounded-full w-8 h-8 flex items-center justify-center text-2xl leading-none shadow-md" title="Añadir Producto">
+                                    +
+                                </button>
+                            </h3>
         
-        <div id="transaction-complete" class="hidden bg-card p-6 md:p-8 text-center">
-            <div id="complete-icon" class="text-6xl mb-4"></div>
-            <h2 id="complete-title" class="text-3xl font-bold mb-2"></h2>
-            <p id="complete-message" class="mb-8 text-gray-600"></p>
-            
-            <h3 class="text-xl font-bold mb-4">Listo para el Siguiente Cliente</h3>
+                            <form id="add-product-form" class="space-y-3 p-4 border rounded-lg bg-gray-50 mb-4 hidden">
+                                 <p class="text-sm font-medium">Añadir y Guardar Producto al Catálogo:</p>
+                                <div class="grid grid-cols-6 gap-3">
+                                    <div class="col-span-1">
+                                         <label for="product-emoji" class="block text-xs font-medium">Emoji</label>
+                                         <input type="text" id="product-emoji" maxlength="2" required placeholder="☕"
+                                               class="mt-1 block w-full px-1 py-1 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                                    </div>
+                                    <div class="col-span-3">
+                                         <label for="product-name" class="block text-xs font-medium">Nombre</label>
+                                         <input type="text" id="product-name" required placeholder="Ej: Café Latte"
+                                               class="mt-1 block w-full px-3 py-1 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                                    </div>
+                                    <div class="col-span-2">
+                                         <label for="product-price" class="block text-xs font-medium">Precio ($)</label>
+                                         <input type="number" id="product-price" required min="0.01" step="0.01" placeholder="3.99"
+                                               class="mt-1 block w-full px-3 py-1 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                                    </div>
+                                </div>
+                                <button type="submit" class="w-full py-2 px-4 rounded-full text-sm font-semibold text-white btn-primary">
+                                    Añadir y Guardar
+                                </button>
+                            </form>
+        
+                            <div id="product-list" class="grid grid-cols-2 lg:grid-cols-3 gap-3 overflow-y-auto flex-grow pr-1">
+                                <p class="col-span-3 text-center text-gray-500" id="empty-catalog-message">Cargando catálogo o vacío. Use el botón (+) para añadir.</p>
+                            </div>
+                        </div>
 
-            <button id="new-transaction-btn" class="w-full py-3 px-4 rounded-full text-lg font-semibold text-white btn-primary">
-                Iniciar Nueva Transacción
-            </button>
+                        <div id="payment-method-view" class="hidden flex-grow flex flex-col justify-between">
+                            <div class="p-0 text-center">
+                                <h2 class="text-2xl font-bold mb-2">
+                                    Monto a Pagar: <span id="display-charge-amount-payment-method" class="text-hug-danger">$0.00</span>
+                                </h2>
+                                <p class="text-lg font-medium mb-4">Paso 2: Seleccionar Método de Pago</p>
+                                
+                                <div class="mb-6 text-left">
+                                    <label for="transaction-description" class="block text-sm font-medium text-gray-700">Descripción de la Transacción (Opcional)</label>
+                                    <input type="text" id="transaction-description" placeholder="Ej: Venta de café y postre"
+                                           class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                                </div>
+                                
+                                <form id="payment-options-form" class="space-y-4">
+                                    
+                                    <input type="radio" id="option-hug-bank" name="payment-option" value="hug-bank" class="radio-option">
+                                    <label for="option-hug-bank" class="radio-label bg-white hover:bg-gray-50 flex justify-between items-center">
+                                        <span>1. Pagar con HUG Bank (App)</span>
+                                        <span class="text-2xl text-blue-500">💳</span>
+                                    </label>
+
+                                    <input type="radio" id="option-cash" name="payment-option" value="cash" class="radio-option">
+                                    <label for="option-cash" class="radio-label bg-white hover:bg-gray-50 flex justify-between items-center">
+                                        <span>2. Pagar con Efectivo</span>
+                                        <span class="text-2xl text-green-600">💵</span>
+                                    </label>
+                                    
+                                    </form>
+                            </div>
+                            <div class="mt-auto">
+                                <button id="cancel-payment-selection-btn" class="w-full mt-6 py-3 px-4 rounded-full text-lg font-semibold btn-danger">
+                                    Cancelar Transacción
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="customer-login-view" class="hidden flex-grow flex flex-col justify-center">
+                            <div class="max-w-md mx-auto w-full">
+                                <h2 class="text-2xl font-bold mb-2 text-center">
+                                    Monto a Pagar: <span id="display-charge-amount-login" class="text-hug-danger">$0.00</span>
+                                </h2>
+                                <p class="text-center text-lg font-medium mb-6">Paso 3: Cliente debe Iniciar Sesión (HUG Bank)</p>
+            
+                                <form id="customer-login-form" class="space-y-4">
+                                    <div>
+                                        <label for="customer-email" class="block text-sm font-medium">Correo Electrónico del Cliente</label>
+                                        <input type="email" id="customer-email" required placeholder="tu.correo@ejemplo.com"
+                                               class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                                    </div>
+                                    <div>
+                                        <label for="customer-password" class="block text-sm font-medium">Contraseña del Cliente</label>
+                                        <input type="password" id="customer-password" required placeholder="********"
+                                               class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                                    </div>
+                                    <button type="submit" class="w-full py-3 px-4 rounded-full text-lg font-semibold text-white btn-primary">
+                                        Continuar al Pago
+                                    </button>
+                                </form>
+                                <button id="cancel-login-btn" class="w-full mt-4 py-3 px-4 rounded-full text-lg font-semibold btn-danger">
+                                    Cancelar Transacción
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="payment-confirmation-view" class="hidden flex-grow flex flex-col justify-center text-center">
+                             <div class="max-w-md mx-auto w-full">
+                                <h2 class="text-3xl font-extrabold mb-4 text-hug-header">Confirmación de Pago</h2>
+            
+                                 <div class="bg-blue-50 p-6 rounded-xl border border-blue-200 mb-6">
+                                    <p class="text-sm text-blue-600">Total a Cobrar</p>
+                                    <h3 class="text-5xl font-extrabold mt-1 text-hug-danger" id="display-charge-amount-confirm">$0.00</h3>
+                                    <p class="text-sm text-blue-600 mt-2">Tu Saldo Actual: <span id="display-current-balance" class="font-bold">$0.00</span></p>
+                                 </div>
+                                 
+                                 <p class="mb-6 text-lg">Paso 4: Aprobar el Pago por <span id="customer-name-display" class="font-bold">Cliente</span></p>
+            
+                                <button id="confirm-payment-btn" class="w-full py-3 px-4 rounded-full text-lg font-semibold text-white btn-primary">
+                                    Aprobar Pago
+                                </button>
+                                <button id="cancel-payment-btn" class="w-full mt-4 py-3 px-4 rounded-full text-lg font-semibold btn-danger">
+                                    Cancelar Transacción
+                                </button>
+                             </div>
+                        </div>
+                        
+                        <div id="transaction-complete-view" class="hidden flex-grow flex flex-col justify-center text-center">
+                             <div class="max-w-md mx-auto w-full">
+                                <div id="complete-icon" class="text-6xl mb-4"></div>
+                                <h2 id="complete-title" class="text-3xl font-bold mb-2"></h2>
+                                <p id="complete-message" class="mb-8 text-gray-600"></p>
+                                
+                                <h3 class="text-xl font-bold mb-4">Listo para el Siguiente Cliente</h3>
+            
+                                <button id="new-transaction-btn" class="w-full py-3 px-4 rounded-full text-lg font-semibold text-white btn-primary">
+                                    Iniciar Nueva Transacción
+                                </button>
+                             </div>
+                        </div>
+
+                    </div>
+                </div>
+                <div class="md:col-span-2 p-4 md:p-6 flex flex-col border-t md:border-t-0">
+                    <h3 class="text-xl font-semibold mb-3">Total y Carrito</h3>
+                    
+                    <div id="cart-items" class="space-y-2 max-h-60 overflow-y-auto p-2 border rounded-lg bg-white flex-grow mb-4">
+                        <p class="text-gray-500 text-center" id="empty-cart-message">Seleccione productos en la izquierda.</p>
+                    </div>
+                    
+                    <div class="flex justify-between items-center font-bold text-2xl pt-4 border-t mt-auto">
+                        <span>Total:</span>
+                        <span id="display-total-amount" class="text-hug-danger">$0.00</span>
+                    </div>
+                    
+                    <div class="mt-4 space-y-3">
+                        <button id="checkout-btn" class="w-full py-3 px-4 rounded-full text-lg font-semibold text-white btn-primary" disabled>
+                            Proceder al Pago
+                        </button>
+                        <button id="clear-cart-btn" class="w-full py-2 px-4 rounded-full text-sm font-semibold text-white bg-gray-400 hover:bg-gray-600">
+                            Vaciar Carrito
+                        </button>
+                    </div>
+                </div>
+                </div>
         </div>
 
         <div id="message-box" class="mt-4 p-4 rounded-lg text-sm hidden" role="alert"></div>
@@ -164,7 +291,7 @@
         import { getAuth, signOut, onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc, runTransaction, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        // --- CONFIGURACIÓN E INICIALIZACIÓN DE FIREBASE ---
+        // --- CONFIGURACIÓN E INICIALIZACIÓN DE FIREBASE (DEMO CONFIG) ---
         const demoFirebaseConfig = {
             apiKey: "AIzaSyBedGoV0Lp_i0Z2wo1_0SkaJa_NrZTPN2g",
             authDomain: "hug-bank.firebaseapp.com",
@@ -182,69 +309,229 @@
         const db = getFirestore(app);
 
         // Variables de sesión
-        let businessUser = null; // Guarda el UID y nombre del negocio (sesión persistente en JS, no en Firebase Auth)
-        let chargeAmount = 0; 
+        let businessUser = null; 
+        let cart = []; 
+        let totalAmount = 0; 
+        let paymentMethod = null; 
+        let productCatalog = []; 
+        let transactionDescription = ''; 
+        // Eliminada: let cashPaymentAmount = 0; 
         
         // --- REFERENCIAS DE UI ---
         const messageBox = document.getElementById('message-box');
         const businessLoginForm = document.getElementById('business-login-form');
-        const customerLoginForm = document.getElementById('customer-login-form');
-        const merchantForm = document.getElementById('merchant-form');
+        const addProductForm = document.getElementById('add-product-form'); 
+        const toggleAddProductFormBtn = document.getElementById('toggle-add-product-form-btn'); 
+        const checkoutBtn = document.getElementById('checkout-btn'); 
+        const clearCartBtn = document.getElementById('clear-cart-btn'); 
+        const businessLogoutBtn = document.getElementById('business-logout-btn');
+        const productList = document.getElementById('product-list'); 
+        const cartItemsContainer = document.getElementById('cart-items'); 
+        const displayTotalAmount = document.getElementById('display-total-amount'); 
+        
+        // Referencias del nuevo flujo de Vistas
+        const paymentMethodView = document.getElementById('payment-method-view');
+        const customerLoginView = document.getElementById('customer-login-view');
+        const paymentConfirmationView = document.getElementById('payment-confirmation-view');
+        const transactionCompleteView = document.getElementById('transaction-complete-view');
+        const productCatalogView = document.getElementById('product-catalog-view');
+        
+        const paymentOptionsForm = document.getElementById('payment-options-form'); 
+        const transactionDescriptionInput = document.getElementById('transaction-description'); 
+        
+        // Eliminadas referencias de Pago Múltiple
+        // const cashAmountInput = document.getElementById('cash-amount');
+        // const hugBankRemainingAmountDisplay = document.getElementById('hug-bank-remaining-amount');
+        // const multiplePaymentFields = document.getElementById('multiple-payment-fields');
+        // const proceedMultiplePaymentBtn = document.getElementById('proceed-multiple-payment-btn');
+        const cancelPaymentSelectionBtn = document.getElementById('cancel-payment-selection-btn'); 
         const confirmPaymentBtn = document.getElementById('confirm-payment-btn');
         const cancelLoginBtn = document.getElementById('cancel-login-btn');
         const cancelPaymentBtn = document.getElementById('cancel-payment-btn');
         const newTransactionBtn = document.getElementById('new-transaction-btn');
-        const businessLogoutBtn = document.getElementById('business-logout-btn');
         
-        // --- UTILIDADES Y VISTAS ---
+        const optionHugBank = document.getElementById('option-hug-bank');
+        const optionCash = document.getElementById('option-cash');
+        // Eliminada: const optionMultiple = document.getElementById('option-multiple');
+
+        // --- FUNCIONES DE VISTA ---
         
-        function showMessage(message, type = 'success') {
-            messageBox.textContent = message;
-            messageBox.className = 'mt-4 p-4 rounded-lg text-sm transition-all duration-300';
-            if (type === 'success') {
-                messageBox.classList.add('bg-green-100', 'text-green-800');
-            } else if (type === 'error') {
-                messageBox.classList.add('bg-red-100', 'text-red-800');
-            } else if (type === 'info') {
-                 messageBox.classList.add('bg-blue-100', 'text-blue-800');
-            }
-            messageBox.classList.remove('hidden');
-
-            setTimeout(() => {
-                messageBox.classList.add('hidden');
-            }, 5000);
-        }
-
-        function switchView(target) {
+        // Controla las vistas completas (Solo Login de Negocio)
+        function switchAppView(target) {
             document.getElementById('business-login').classList.add('hidden');
             document.getElementById('charge-setup').classList.add('hidden');
-            document.getElementById('customer-login').classList.add('hidden');
-            document.getElementById('payment-confirmation').classList.add('hidden');
-            document.getElementById('transaction-complete').classList.add('hidden');
             document.getElementById(target).classList.remove('hidden');
+        }
+
+        // Controla las sub-vistas del panel izquierdo (#dynamic-pos-panel)
+        function switchDynamicView(target) {
+            const views = [productCatalogView, paymentMethodView, customerLoginView, paymentConfirmationView, transactionCompleteView];
+            views.forEach(view => view.classList.add('hidden'));
+
+            switch (target) {
+                case 'product-catalog-view':
+                    productCatalogView.classList.remove('hidden');
+                    break;
+                case 'payment-method-view':
+                    paymentMethodView.classList.remove('hidden');
+                    break;
+                case 'customer-login-view':
+                    customerLoginView.classList.remove('hidden');
+                    break;
+                case 'payment-confirmation-view':
+                    paymentConfirmationView.classList.remove('hidden');
+                    break;
+                case 'transaction-complete-view':
+                    transactionCompleteView.classList.remove('hidden');
+                    break;
+            }
+            switchAppView('charge-setup'); // Asegura que el POS principal esté visible
+        }
+
+        // --- RESTO DE UTILIDADES ---
+        
+        function showMessage(message, type = 'success') {
+             messageBox.textContent = message;
+             messageBox.className = 'mt-4 p-4 rounded-lg text-sm transition-all duration-300';
+             if (type === 'success') {
+                 messageBox.classList.add('bg-green-100', 'text-green-800');
+             } else if (type === 'error') {
+                 messageBox.classList.add('bg-red-100', 'text-red-800');
+             } else if (type === 'info') {
+                  messageBox.classList.add('bg-blue-100', 'text-blue-800');
+             }
+             messageBox.classList.remove('hidden');
+ 
+             setTimeout(() => {
+                 messageBox.classList.add('hidden');
+             }, 5000);
+        }
+
+        async function saveProductCatalogToFirestore(products) {
+            if (!businessUser) return;
+            try {
+                // Ruta: /artifacts/{appId}/users/{userId}/config/products
+                const productConfigRef = doc(db, `artifacts/${appId}/users/${businessUser.uid}/config/products`);
+                await setDoc(productConfigRef, { catalog: products, updated: serverTimestamp() });
+                // El error de permisos desaparece al mantener la sesión abierta
+            } catch (error) {
+                console.error("Error al guardar el catálogo:", error);
+                showMessage('Error al guardar el catálogo. No persistirá.', 'error');
+            }
+        }
+
+        async function loadProductCatalogFromFirestore() {
+            if (!businessUser) return [];
+            try {
+                // Ruta: /artifacts/{appId}/users/{userId}/config/products
+                const productConfigRef = doc(db, `artifacts/${appId}/users/${businessUser.uid}/config/products`);
+                const docSnap = await getDoc(productConfigRef);
+                if (docSnap.exists() && docSnap.data().catalog) {
+                    return docSnap.data().catalog;
+                }
+                return [];
+            } catch (error) {
+                console.error("Error al cargar el catálogo:", error);
+                return [];
+            }
         }
         
         function resetChargeState() {
-             // Limpia el estado de cobro y vuelve a la vista de configuración
-             chargeAmount = 0;
-             document.getElementById('charge-amount').value = '';
+             cart = []; 
+             totalAmount = 0;
+             paymentMethod = null;
+             transactionDescription = ''; 
+             // cashPaymentAmount = 0; // Eliminado
              document.getElementById('customer-login-form').reset();
+             document.getElementById('transaction-description').value = ''; 
              
-             // Mantiene la sesión del cliente abierta (si existe)
-             switchView('charge-setup');
+             // Resetear opciones de pago
+             optionHugBank.checked = false;
+             optionCash.checked = false;
+             // Eliminado reset de multiple payment fields
+             
+             updateCartDisplay(); 
+             switchDynamicView('product-catalog-view');
         }
 
         function resetAllState() {
-             // Cierra la sesión de negocio O cliente
              signOut(auth).catch(() => {});
              businessUser = null;
+             cart = [];
+             totalAmount = 0;
+             paymentMethod = null;
+             productCatalog = []; 
+             transactionDescription = ''; 
+             // Eliminado: cashPaymentAmount = 0; 
              
-             // Vuelve a la vista de login de negocio
-             switchView('business-login');
+             switchAppView('business-login');
+        }
+        
+        function updateProductListDisplay() {
+            productList.innerHTML = '';
+            
+            if (productCatalog.length === 0) {
+                 productList.innerHTML = '<p class="col-span-3 text-center text-gray-500" id="empty-catalog-message">Catálogo vacío. Use el botón (+) para añadir su primer producto.</p>';
+            } else {
+                productCatalog.forEach((product, index) => {
+                    const card = document.createElement('div');
+                    card.className = 'product-card bg-gray-100 p-3 text-center rounded-lg';
+                    card.dataset.index = index;
+                    card.innerHTML = `
+                        <span class="block text-2xl">${product.emoji}</span>
+                        <p class="text-sm font-medium truncate">${product.name}</p>
+                        <p class="text-xs font-bold text-gray-700">$${product.price.toFixed(2)}</p>
+                    `;
+                    card.addEventListener('click', (e) => {
+                         const idx = parseInt(e.currentTarget.dataset.index);
+                         addProductToCart(productCatalog[idx]);
+                    });
+                    productList.appendChild(card);
+                });
+            }
+        }
+        
+        function addProductToCart(product) {
+            cart.push({ name: product.name, price: product.price, emoji: product.emoji });
+            updateCartDisplay();
+            showMessage(`${product.name} ($${product.price.toFixed(2)}) agregado al carrito.`, 'info');
         }
 
-        // --- FIREBASE HELPER FUNCTIONS ---
+        function updateCartDisplay() {
+            cartItemsContainer.innerHTML = '';
+            totalAmount = cart.reduce((sum, item) => sum + item.price, 0);
+            displayTotalAmount.textContent = `$${totalAmount.toFixed(2)}`;
+            checkoutBtn.disabled = totalAmount <= 0;
+            
+            if (cart.length === 0) {
+                 cartItemsContainer.innerHTML = '<p class="text-gray-500 text-center" id="empty-cart-message">Seleccione productos en la izquierda.</p>';
+            } else {
+                cart.forEach((item, index) => {
+                    const itemEl = document.createElement('div');
+                    itemEl.className = 'flex justify-between text-sm items-center py-1 border-b last:border-b-0';
+                    itemEl.innerHTML = `
+                        <span>${item.emoji || '📦'} ${item.name}</span>
+                        <div class="flex items-center">
+                            <span class="font-medium mr-2">$${item.price.toFixed(2)}</span>
+                            <button data-index="${index}" class="remove-item-btn text-red-500 hover:text-red-700 text-lg leading-none" title="Quitar">&times;</button>
+                        </div>
+                    `;
+                    cartItemsContainer.appendChild(itemEl);
+                });
+            }
+            document.querySelectorAll('.remove-item-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const index = parseInt(e.currentTarget.dataset.index);
+                    removeItemFromCart(index);
+                });
+            });
+        }
         
+        function removeItemFromCart(index) {
+             cart.splice(index, 1);
+             updateCartDisplay();
+        }
+
         async function loadBalance(userId) {
              try {
                 const userAccountRef = doc(db, `artifacts/${appId}/users/${userId}/account/data`);
@@ -271,7 +558,6 @@
             return await addDoc(transactionsRef, { ...transactionData, timestamp: serverTimestamp() });
         }
         
-        // Función para mostrar el resultado final.
         function showCompletionScreen(success, title, message) {
             const icon = document.getElementById('complete-icon');
             const titleEl = document.getElementById('complete-title');
@@ -289,10 +575,11 @@
             titleEl.textContent = title;
             messageEl.textContent = message;
             
-            // ** CORRECCIÓN: Llamada a signOut(auth) para cerrar la sesión del cliente al finalizar la transacción. **
-            signOut(auth).catch(() => {});
+            if(paymentMethod === 'hug-bank') {
+                signOut(auth).catch(() => {});
+            }
             
-            switchView('transaction-complete');
+            switchDynamicView('transaction-complete-view');
         }
 
 
@@ -310,12 +597,16 @@
                 
                 businessUser = { uid: user.uid, name: user.displayName || 'Negocio' };
                 
+                productCatalog = await loadProductCatalogFromFirestore(); 
                 document.getElementById('business-name-display').textContent = businessUser.name;
                 
-                // Cerramos la sesión del negocio inmediatamente para liberar el slot de auth.currentUser para el cliente
-                signOut(auth);
+                // === LÍNEA CRUCIAL ELIMINADA ===
+                // signOut(auth); 
+                // La línea anterior causaba que el negocio perdiera los permisos inmediatamente.
                 
-                switchView('charge-setup'); 
+                updateCartDisplay(); 
+                updateProductListDisplay(); 
+                switchDynamicView('product-catalog-view'); 
 
             } catch (error) {
                 console.error("Error de inicio de sesión del negocio:", error);
@@ -323,50 +614,121 @@
             }
         });
         
-        // Logout del Negocio
         businessLogoutBtn.addEventListener('click', resetAllState);
 
-
-        // V1: Configuración del Cobro (Business is active)
-        merchantForm.addEventListener('submit', (e) => {
+        // V1: Configuración del Cobro (Product Management)
+        toggleAddProductFormBtn.addEventListener('click', () => {
+            addProductForm.classList.toggle('hidden');
+            toggleAddProductFormBtn.textContent = addProductForm.classList.contains('hidden') ? '+' : '−';
+        });
+        
+        addProductForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const amount = parseFloat(document.getElementById('charge-amount').value);
+            const name = document.getElementById('product-name').value.trim();
+            const emoji = document.getElementById('product-emoji').value.trim().slice(0, 2); 
+            let price;
+
+            try {
+                 price = parseFloat(document.getElementById('product-price').value);
+                 if (isNaN(price) || price <= 0) {
+                      throw new Error("Precio inválido");
+                 }
+            } catch (error) {
+                 showMessage('Por favor, ingrese un precio positivo y válido.', 'error');
+                 return;
+            }
             
-            if (amount <= 0 || isNaN(amount)) {
-                showMessage('El monto de cobro debe ser positivo.', 'error');
+            if (name.length === 0) {
+                 showMessage('El nombre del producto no puede estar vacío.', 'error');
+                 return;
+            }
+            
+            const newProduct = { 
+                name: name, 
+                price: parseFloat(price.toFixed(2)), 
+                emoji: emoji || '📦' 
+            };
+
+            productCatalog.push(newProduct);
+            saveProductCatalogToFirestore(productCatalog);
+            updateProductListDisplay();
+            
+            addProductForm.reset();
+            addProductForm.classList.add('hidden');
+            toggleAddProductFormBtn.textContent = '+';
+        });
+        
+        clearCartBtn.addEventListener('click', () => {
+             cart = [];
+             updateCartDisplay();
+             showMessage('Carrito de compras vaciado.', 'info');
+        });
+
+        // Evento: Proceder al Pago (Checkout)
+        checkoutBtn.addEventListener('click', () => {
+            if (totalAmount <= 0) {
+                showMessage('Debe seleccionar productos para proceder al pago.', 'error');
                 return;
             }
-
-            chargeAmount = amount;
-            document.getElementById('display-charge-amount-login').textContent = `$${chargeAmount.toFixed(2)}`;
-            document.getElementById('display-charge-amount-confirm').textContent = `$${chargeAmount.toFixed(2)}`;
             
-            // Pasa a la vista de login del cliente
-            switchView('customer-login');
+            document.getElementById('display-charge-amount-payment-method').textContent = `$${totalAmount.toFixed(2)}`;
+            
+            // Asegurarse de que ninguna opción esté seleccionada al entrar a la vista
+            optionHugBank.checked = false;
+            optionCash.checked = false;
+
+            switchDynamicView('payment-method-view');
+        });
+
+        
+        // V2: Selección de Método de Pago (Simplificada)
+        paymentOptionsForm.addEventListener('change', (e) => {
+            const selectedOption = e.target.value;
+            
+            if (selectedOption === 'cash') {
+                 // Opción Efectivo - Ejecución directa
+                 paymentMethod = 'cash';
+                 transactionDescription = transactionDescriptionInput.value.trim();
+                 
+                 const msgDesc = transactionDescription ? ` (${transactionDescription})` : ''; 
+                 showCompletionScreen(true, 'Cobro en Efectivo Exitoso', `Se recibió $${totalAmount.toFixed(2)} en efectivo${msgDesc}.`);
+
+            } else if (selectedOption === 'hug-bank') {
+                 // Opción HUG Bank - Va a Login de Cliente
+                 paymentMethod = 'hug-bank';
+                 transactionDescription = transactionDescriptionInput.value.trim();
+                 
+                 document.getElementById('display-charge-amount-login').textContent = `$${totalAmount.toFixed(2)}`;
+                 document.getElementById('display-charge-amount-confirm').textContent = `$${totalAmount.toFixed(2)}`;
+                 switchDynamicView('customer-login-view');
+            }
+        });
+
+        // Eventos de Pago Múltiple Eliminados
+
+        cancelPaymentSelectionBtn.addEventListener('click', () => {
+            resetChargeState();
+            showMessage('Transacción cancelada por el negocio.', 'info');
         });
 
 
-        // V2: Inicio de Sesión del Cliente
-        customerLoginForm.addEventListener('submit', async (e) => {
+        // V3 y V4: Login de Cliente y Confirmación 
+        document.getElementById('customer-login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const email = document.getElementById('customer-email').value;
             const password = document.getElementById('customer-password').value;
             
-            // Si el cliente anterior está logueado, esta llamada lo cerrará antes de intentar el nuevo login
-            signOut(auth);
-            
+            // signOut(auth); // Línea que podría causar problemas si el negocio estuviera activo.
+
             try {
-                // Autenticación del cliente
                 const userCredential = await signInWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
                 
-                // El cliente es ahora el auth.currentUser
                 document.getElementById('customer-name-display').textContent = user.displayName || 'Cliente';
                 const balance = await loadBalance(user.uid);
                 document.getElementById('display-current-balance').textContent = `$${balance.toFixed(2)}`;
                 
-                // Pasa a la vista de confirmación
-                switchView('payment-confirmation');
+                switchDynamicView('payment-confirmation-view');
                 
             } catch (error) {
                 console.error("Error de inicio de sesión del cliente:", error);
@@ -374,19 +736,20 @@
             }
         });
 
-        // V2: Botón Cancelar Login
         cancelLoginBtn.addEventListener('click', () => {
-             // ** CORRECCIÓN: Cerrar sesión del cliente si estaba abierta, por si el negocio cancela el cobro. **
              signOut(auth).catch(() => {});
-             resetChargeState();
-             showMessage('Transacción cancelada por el negocio.', 'info');
+             showMessage('Login cancelado. Vuelva a intentar o seleccione otro método.', 'info');
+             switchDynamicView('payment-method-view'); 
         });
 
-        // V3: Confirmación de Pago
         confirmPaymentBtn.addEventListener('click', async () => {
             const customerUser = auth.currentUser;
-            if (!customerUser || chargeAmount <= 0) {
-                showCompletionScreen(false, 'Error', 'No hay un cliente autenticado o un monto válido.');
+            
+            // El monto a cobrar es siempre el total
+            const chargeAmount = totalAmount; 
+            
+            if (!customerUser || chargeAmount <= 0) { 
+                showCompletionScreen(false, 'Error', 'No hay un cliente autenticado o un monto válido para HUG Bank.');
                 return;
             }
             if (!businessUser) {
@@ -402,30 +765,23 @@
 
             try {
                 await runTransaction(db, async (transaction) => {
-                    // 1. Obtener documentos de cuentas
                     const customerDoc = await transaction.get(customerRef);
                     if (!customerDoc.exists()) throw new Error("Cuenta del cliente no existe.");
                     
                     const businessDoc = await transaction.get(businessRef);
                     
-                    // 2. Lógica de transferencia y balance
                     const customerBalance = customerDoc.data().balance;
-                    if (customerBalance < chargeAmount) {
+                    if (customerBalance < chargeAmount) { 
                         throw new Error("Saldo insuficiente en la cuenta del cliente.");
                     }
 
                     const newCustomerBalance = customerBalance - chargeAmount;
                     let currentBusinessBalance = businessDoc.exists() ? businessDoc.data().balance : 0;
-                    const newBusinessBalance = currentBusinessBalance + chargeAmount;
+                    const newBusinessBalance = currentBusinessBalance + chargeAmount; 
 
-                    // 3. Actualizar saldos
-                    
-                    // A. Cliente: Update
                     transaction.update(customerRef, { balance: newCustomerBalance });
 
-                    // B. Negocio: SET (Crea si no existe, actualiza si existe)
                     if (!businessDoc.exists()) {
-                         // Crea el documento del negocio con el nuevo balance si no existía
                          transaction.set(businessRef, { 
                             balance: newBusinessBalance, 
                             name: businessUser.name, 
@@ -433,55 +789,46 @@
                             creditScore: { average: 5.0, count: 0 } 
                          });
                     } else {
-                        // Actualiza el documento del negocio si ya existía
                         transaction.update(businessRef, { balance: newBusinessBalance });
                     }
                 });
 
-                // 4. Registro de transacciones 
                 const customerData = await getAccountData(customerId);
+                const transactionDetails = {
+                    amount: totalAmount, 
+                    hugBankAmount: totalAmount, // Solo HUG Bank
+                    cashAmount: 0, // No hay efectivo
+                    description: transactionDescription, 
+                    senderId: customerId, 
+                    recipientId: businessId,
+                    type: 'pos-payment-sent', // Tipo simple
+                    senderName: customerData.name,
+                    recipientName: businessUser.name,
+                    items: cart 
+                };
 
-                // A. Cliente: Gasto (Negativo)
-                await createTransaction(customerId, { 
-                    amount: chargeAmount, 
-                    senderId: customerId, 
-                    recipientId: businessId,
-                    type: 'pos-payment-sent', 
-                    senderName: customerData.name,
-                    recipientName: businessUser.name
-                });
-                // B. Negocio: Ingreso (Positivo)
-                await createTransaction(businessId, { 
-                    amount: chargeAmount, 
-                    senderId: customerId, 
-                    recipientId: businessId,
-                    type: 'pos-payment-received', 
-                    senderName: customerData.name,
-                    recipientName: businessUser.name
-                });
+                await createTransaction(customerId, transactionDetails);
+                transactionDetails.type = 'pos-payment-received';
+                await createTransaction(businessId, transactionDetails);
                 
-                // showCompletionScreen ahora cierra la sesión de Firebase
-                showCompletionScreen(true, '¡Pago Exitoso!', `Se cobró $${chargeAmount.toFixed(2)} al cliente y se acreditó al negocio. UID del Negocio: **${businessId}**`);
+                const finalMessage = `Se cobró $${chargeAmount.toFixed(2)} al cliente y se acreditó al negocio. ${transactionDescription ? '(' + transactionDescription + ')' : ''}`;
+
+                showCompletionScreen(true, '¡Pago Exitoso!', finalMessage);
 
             } catch (e) {
                 console.error("Fallo de Transacción:", e.message);
                 let msg = e.message.includes("Saldo insuficiente") 
-                    ? "Saldo insuficiente para completar el cobro."
+                    ? "Saldo insuficiente para cubrir el cobro de HUG Bank."
                     : `Fallo la transacción: ${e.message}`;
-                // showCompletionScreen ahora cierra la sesión de Firebase
                 showCompletionScreen(false, 'Pago Fallido', msg);
             }
         });
         
-        // V3: Botón Cancelar Pago
         cancelPaymentBtn.addEventListener('click', () => {
-             // showCompletionScreen ahora se encarga de cerrar la sesión del cliente
              showCompletionScreen(false, 'Transacción Cancelada', 'El cliente decidió cancelar el pago.');
         });
         
-        // V4: Botón Nueva Transacción
         newTransactionBtn.addEventListener('click', () => {
-             // Dado que showCompletionScreen cerró la sesión, solo necesitamos resetear el estado de cobro
              resetChargeState(); 
         });
 
@@ -489,42 +836,38 @@
         // --- CONTROL DE ESTADO DE AUTENTICACIÓN ---
         
         onAuthStateChanged(auth, async (user) => {
-            // Maneja el estado cuando el cliente o el negocio inicia sesión (o se refresca la página)
-            
             if (user && businessUser && user.uid === businessUser.uid) {
-                // Estado: El negocio está logueado (solo sucede por recarga de página)
                 document.getElementById('business-name-display').textContent = user.displayName || businessUser.name;
-                businessUser.name = user.displayName || businessUser.name; // Actualizar el nombre si es necesario
-                switchView('charge-setup');
+                businessUser.name = user.displayName || businessUser.name; 
                 
-            } else if (user && businessUser && user.uid !== businessUser.uid) {
-                // Estado: El cliente está logueado y el negocio tiene su ID guardado
-                if (chargeAmount > 0) {
-                     // Solo saltar a confirmación si ya se definió un monto
-                    document.getElementById('customer-name-display').textContent = user.displayName || 'Cliente';
-                    const balance = await loadBalance(user.uid);
-                    document.getElementById('display-current-balance').textContent = `$${balance.toFixed(2)}`;
-                    switchView('payment-confirmation');
+                productCatalog = await loadProductCatalogFromFirestore(); 
+                updateProductListDisplay(); 
+                
+                switchDynamicView('product-catalog-view');
+                
+            } else if (user && businessUser && user.uid !== businessUser.uid && paymentMethod === 'hug-bank' && totalAmount > 0) {
+                
+                const balance = await loadBalance(user.uid);
+                document.getElementById('customer-name-display').textContent = user.displayName || 'Cliente';
+                document.getElementById('display-current-balance').textContent = `$${balance.toFixed(2)}`;
+                document.getElementById('display-charge-amount-confirm').textContent = `$${totalAmount.toFixed(2)}`;
+                
+                switchDynamicView('payment-confirmation-view');
+            
+            } else if (!user && businessUser) {
+                if (totalAmount > 0 && paymentMethod === null) {
+                    // Si el usuario cancela el login, vuelve a la selección de pago
+                    switchDynamicView('payment-method-view');
                 } else {
-                     // El cliente anterior sigue logueado, pero no hay cobro activo. Volver a la configuración del negocio.
-                     // CERRAR SESIÓN DEL CLIENTE ANTERIOR PARA EVITAR CONFUSIONES
-                     signOut(auth).catch(() => {});
-                     switchView('charge-setup');
+                    switchDynamicView('product-catalog-view');
                 }
+
             } else {
-                 // Estado: Nadie está logueado (al inicio, o después de cerrar sesión de negocio o cliente)
-                 if (!businessUser) {
-                    // Si no hay negocio guardado, pedir login de negocio
-                    switchView('business-login');
-                 } else {
-                    // Si businessUser existe pero auth.currentUser no, (estado normal de espera)
-                    switchView('charge-setup');
-                 }
+                 switchAppView('business-login');
             }
         });
         
-        // Iniciar en la vista de login del negocio
-        switchView('business-login'); 
+        switchAppView('business-login'); 
 
     </script>
 </body>
