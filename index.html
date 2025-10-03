@@ -1414,7 +1414,7 @@
         
 
         // --- FUNCIÓN PRINCIPAL PARA RENDERIZAR ELEMENTOS DEL HISTORIAL (CORREGIDA PARA SOPORTAR NUEVOS TIPOS Y DESCRIPCIÓN) ---
-        function renderTransactionItem(transaction, docId, isDebtList = false) {
+        function renderTransactionItem(transaction, docId, isDebtList = true) {
             const amount = transaction.amount || 0;
             const type = transaction.type;
             const senderName = transaction.senderName || 'Anónimo';
@@ -1663,79 +1663,80 @@
         
         // [ADICIÓN: Función para escuchar Solicitudes de Préstamo]
         function listenToLoanRequests(userId) {
-            if (!userId) return;
+    if (!userId) return;
 
-            const loanRequestsRef = collection(db, `artifacts/${appId}/loan-requests`);
-            
-            // Consulta para solicitudes pendientes y no creadas por el usuario actual
-            // Se usa el filtro 'status' para evitar sobrecargar los listeners.
-            const publicRequestsQuery = query(loanRequestsRef, 
-                where('status', '==', 'pending'),
-                orderBy('timestamp', 'desc')
-            );
+    // 1. Consulta SIMPLE en Firestore
+    // Solo filtra por el estado 'pending', lo cual es un filtro simple que no requiere índice compuesto.
+    const q = query(
+        collection(db, `artifacts/${appId}/loan-requests`),
+        where('status', '==', 'pending') 
+        // Opcional: puedes añadir un orderBy() simple aquí, si es necesario, 
+        // por ejemplo: orderBy('timestamp', 'desc')
+    );
 
-            onSnapshot(publicRequestsQuery, (snapshot) => {
-                loanRequestsList.innerHTML = '';
-                let hasRequests = false;
-                
-                snapshot.forEach(doc => {
-                    const request = doc.data();
-                    const requestDocId = doc.id;
-                    
-                    // Solo mostrar solicitudes que NO son del usuario actual
-                    if (request.debtorId === userId) return; 
-                    
-                    hasRequests = true;
+    onSnapshot(q, (querySnapshot) => {
+        loanRequestsList.innerHTML = '';
+        
+        const currentUserId = userId; 
+        
+        // 2. LÍNEA CLAVE: FILTRADO en el lado del cliente (JavaScript)
+        // Crea un nuevo array que excluye las solicitudes donde el 'debtorId' es el del usuario logueado.
+        const filteredRequests = querySnapshot.docs.filter(doc => {
+            return doc.data().debtorId !== currentUserId;
+        });
 
-                    const score = request.creditScoreSnapshot ? request.creditScoreSnapshot.toFixed(1) : 'N/A';
-                    const amountToLend = request.amount;
-                    const interestRate = request.interestRate;
-                    
-                    // Cálculo de la ganancia potencial (neto)
-                    const totalToPay = amountToLend * (1 + (interestRate / 100));
-                    // Calcular la comisión bancaria sobre el total (usa la misma lógica de escalonamiento)
-                    const commissionRate = getRequiredMinimumInterest(amountToLend) / 100;
-                    const bankCommission = totalToPay * commissionRate;
-                    const amountToReceive = totalToPay - bankCommission;
-                    
-                    const description = request.description || 'Sin descripción';
-
-                    const item = document.createElement('div');
-                    item.className = 'bg-gray-50 p-3 rounded-lg border border-gray-200';
-                    item.innerHTML = `
-                        <p class="text-lg font-semibold text-gray-800">Solicita: $${amountToLend.toFixed(2)}</p>
-                        <p class="text-sm text-gray-600">Interés: ${interestRate}% | Score: ${score} ★</p>
-                        <p class="text-xs text-gray-500">Motivo: ${description}</p>
-                        <p class="text-xs text-gray-500">Deudor: ${request.debtorName} (ID: ${request.debtorId})</p>
-                        <div class="mt-2 p-2 bg-green-100 rounded">
-                            <p class="text-xs font-semibold text-green-700">Neto al Cobrar (aprox.): $${amountToReceive.toFixed(2)}</p>
-                        </div>
-                        <button class="lend-on-request-btn mt-3 w-full py-2 px-4 rounded-full text-md font-semibold text-white btn-primary"
-                                data-id="${requestDocId}">
-                            Aceptar Solicitud y Prestar
-                        </button>
-                    `;
-                    
-                    loanRequestsList.appendChild(item);
-                });
-
-                if (!hasRequests) {
-                    loanRequestsList.innerHTML = '<p class="text-gray-500 text-sm text-center">No hay solicitudes de préstamo activas en este momento.</p>';
-                }
-                
-                // Listener para Aceptar Oferta (Prestar)
-                loanRequestsList.querySelectorAll('.lend-on-request-btn').forEach(button => {
-                    button.addEventListener('click', async () => {
-                        const docId = button.dataset.id;
-                        const requestDoc = await getDoc(doc(db, `artifacts/${appId}/loan-requests/${docId}`));
-                        if (requestDoc.exists()) {
-                            // Se muestra diálogo de confirmación en lendOnRequest
-                            await lendOnRequest(docId, requestDoc.data());
-                        }
-                    });
-                });
-            });
+        if (filteredRequests.length === 0) {
+            loanRequestsList.innerHTML = '<p class="text-gray-500 text-sm text-center">No hay solicitudes de préstamo activas en este momento.</p>';
+            return;
         }
+
+        // 3. Iteramos sobre el arreglo ya filtrado (filteredRequests)
+        filteredRequests.forEach((doc) => { 
+            const requestDocId = doc.id;
+            const requestData = doc.data();
+            
+            // Lógica para mostrar las estrellas del Credit Score
+            const score = requestData.creditScoreSnapshot || 5.0;
+            const starHtml = Array(Math.round(score)).fill('★').join('') + 
+                             Array(5 - Math.round(score)).fill('☆').join('');
+
+            const item = document.createElement('li');
+            item.className = 'bg-gray-50 p-3 rounded-lg border border-gray-200';
+            item.innerHTML = `
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="font-bold text-lg text-red-600">$${requestData.amount.toFixed(2)}</p>
+                        <p class="text-xs text-gray-500">Deudor: ${requestData.debtorName}</p>
+                        <p class="text-xs text-gray-500 break-all">ID: ${requestData.debtorId}</p>
+                        <p class="text-xs text-blue-600 mt-1">${requestData.description || 'Sin descripción'}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm font-semibold text-green-700">${requestData.interestRate.toFixed(2)}% Int.</p>
+                        <p class="text-xs text-yellow-500 mt-1" title="Score de Crédito">${starHtml} (${score.toFixed(1)})</p>
+                    </div>
+                </div>
+                <button class="lend-on-request-btn mt-3 w-full py-2 px-4 rounded-full text-md font-semibold text-white btn-primary"
+                        data-id="${requestDocId}">
+                    Aceptar Solicitud y Prestar
+                </button>
+            `;
+            
+            loanRequestsList.appendChild(item);
+        });
+        
+        // Listener para Aceptar Oferta (Prestar)
+        loanRequestsList.querySelectorAll('.lend-on-request-btn').forEach(button => {
+            button.addEventListener('click', async () => {
+                const docId = button.dataset.id;
+                const requestDoc = await getDoc(doc(db, `artifacts/${appId}/loan-requests/${docId}`));
+                if (requestDoc.exists()) {
+                    // Se muestra diálogo de confirmación en lendOnRequest
+                    await lendOnRequest(docId, requestDoc.data());
+                }
+            });
+        });
+    });
+}
         // [/ADICIÓN: Función para escuchar Solicitudes de Préstamo]
     </script>
 </body>
