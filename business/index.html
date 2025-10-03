@@ -109,9 +109,14 @@
                     <h2 class="text-2xl font-bold text-hug-header">Punto de Venta</h2>
                     <p class="text-sm">Bienvenido, <span id="business-name-display" class="font-bold"></span></p>
                  </div>
-                 <button id="business-logout-btn" class="py-1 px-3 rounded-full text-sm font-semibold text-white bg-gray-500 hover:bg-gray-700">
-                    Cerrar Sesión
-                 </button>
+                 <div class="flex space-x-2">
+                    <button id="toggle-statistics-btn" class="py-1 px-3 rounded-full text-sm font-semibold text-white bg-blue-500 hover:bg-blue-700">
+                        Estadísticas
+                    </button>
+                    <button id="business-logout-btn" class="py-1 px-3 rounded-full text-sm font-semibold text-white bg-gray-500 hover:bg-gray-700">
+                        Cerrar Sesión
+                    </button>
+                 </div>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-5 min-h-[500px]">
@@ -254,7 +259,32 @@
                                 </button>
                              </div>
                         </div>
+                        
+                        <div id="statistics-view" class="hidden flex-grow flex flex-col">
+                             <h3 class="text-xl font-semibold mb-3">Estadísticas de Ventas</h3>
+                             
+                             <div class="grid grid-cols-2 gap-4 mb-4">
+                                <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                                     <p class="text-sm font-medium text-blue-600">Ingreso Total</p>
+                                     <h4 id="total-revenue-display" class="text-3xl font-bold text-blue-800">$0.00</h4>
+                                </div>
+                                <div class="bg-green-50 p-4 rounded-lg border border-green-200">
+                                     <p class="text-sm font-medium text-green-600">Productos Vendidos</p>
+                                     <h4 id="total-items-display" class="text-3xl font-bold text-green-800">0</h4>
+                                </div>
+                             </div>
+                             
+                             <h4 class="text-lg font-semibold mb-2 mt-2 border-t pt-4">Productos Más Vendidos (Todas las Ventas)</h4>
+                             
+                             <div id="top-products-list" class="space-y-3 overflow-y-auto flex-grow pr-1">
+                                <p class="text-center text-gray-500" id="empty-stats-message">Cargando datos de ventas...</p>
+                             </div>
 
+                             <button id="back-to-pos-btn" class="w-full mt-4 py-2 px-4 rounded-full text-sm font-semibold text-white bg-gray-500 hover:bg-gray-700">
+                                Volver al Punto de Venta
+                            </button>
+                        </div>
+                        
                     </div>
                 </div>
                 <div class="md:col-span-2 p-4 md:p-6 flex flex-col border-t md:border-t-0">
@@ -289,7 +319,8 @@
         // IMPORTACIONES DE FIREBASE
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signOut, onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, runTransaction, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        // Añadida la importación 'getDocs' y 'query' para las estadísticas
+        import { getFirestore, doc, setDoc, getDoc, runTransaction, collection, addDoc, serverTimestamp, getDocs, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- CONFIGURACIÓN E INICIALIZACIÓN DE FIREBASE (DEMO CONFIG) ---
         const demoFirebaseConfig = {
@@ -335,6 +366,14 @@
         const transactionCompleteView = document.getElementById('transaction-complete-view');
         const productCatalogView = document.getElementById('product-catalog-view');
         
+        // Referencias de la nueva vista de estadísticas
+        const statisticsView = document.getElementById('statistics-view'); 
+        const toggleStatisticsBtn = document.getElementById('toggle-statistics-btn');
+        const backToPosBtn = document.getElementById('back-to-pos-btn');
+        const totalRevenueDisplay = document.getElementById('total-revenue-display');
+        const totalItemsDisplay = document.getElementById('total-items-display');
+        const topProductsList = document.getElementById('top-products-list');
+        
         const paymentOptionsForm = document.getElementById('payment-options-form'); 
         const transactionDescriptionInput = document.getElementById('transaction-description'); 
         
@@ -358,7 +397,7 @@
 
         // Controla las sub-vistas del panel izquierdo (#dynamic-pos-panel)
         function switchDynamicView(target) {
-            const views = [productCatalogView, paymentMethodView, customerLoginView, paymentConfirmationView, transactionCompleteView];
+            const views = [productCatalogView, paymentMethodView, customerLoginView, paymentConfirmationView, transactionCompleteView, statisticsView];
             views.forEach(view => view.classList.add('hidden'));
 
             switch (target) {
@@ -377,6 +416,9 @@
                 case 'transaction-complete-view':
                     transactionCompleteView.classList.remove('hidden');
                     break;
+                 case 'statistics-view': // Nuevo caso
+                     statisticsView.classList.remove('hidden');
+                     break;
             }
             switchAppView('charge-setup'); // Asegura que el POS principal esté visible
         }
@@ -415,7 +457,7 @@
         async function loadProductCatalogFromFirestore() {
             if (!businessUser) return [];
             try {
-                // Ruta: /artifacts/{appId}/users/{userId}/config/products
+                // Ruta: /artifacts/{appId}/users/${userId}/config/products
                 const productConfigRef = doc(db, `artifacts/${appId}/users/${businessUser.uid}/config/products`);
                 const docSnap = await getDoc(productConfigRef);
                 if (docSnap.exists() && docSnap.data().catalog) {
@@ -593,6 +635,114 @@
             switchDynamicView('transaction-complete-view');
         }
 
+        
+        // --- FUNCIÓN DE ESTADÍSTICAS ---
+
+        async function loadSalesStatistics() {
+            topProductsList.innerHTML = '<p class="text-center text-gray-500">Cargando datos de ventas...</p>';
+            totalRevenueDisplay.textContent = '$0.00';
+            totalItemsDisplay.textContent = '0';
+            
+            if (!businessUser) return;
+
+            const transactionsRef = collection(db, `artifacts/${appId}/users/${businessUser.uid}/transactions`);
+            
+            // Aquí se podría añadir un 'query(transactionsRef, where(...), orderBy(...))'
+            // para filtrar por fecha si fuese necesario. Por simplicidad, cargamos todo.
+            try {
+                const q = query(transactionsRef);
+                const querySnapshot = await getDocs(q);
+                
+                let totalRevenue = 0;
+                let totalItemsSold = 0;
+                const productSales = {}; // { productName: { count: N, revenue: M, emoji: E } }
+
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    // Solo considerar transacciones de cobro (pos-payment-received-cash o pos-payment-received)
+                    if (data.type && (data.type.startsWith('pos-payment-received'))) {
+                        const transactionAmount = data.amount || 0;
+                        totalRevenue += transactionAmount;
+                        
+                        if (data.items && Array.isArray(data.items)) {
+                            data.items.forEach(item => {
+                                const key = item.name;
+                                totalItemsSold += 1;
+                                
+                                if (!productSales[key]) {
+                                    productSales[key] = { count: 0, revenue: 0, emoji: item.emoji || '📦' };
+                                }
+                                
+                                productSales[key].count += 1;
+                                productSales[key].revenue += item.price || 0;
+                            });
+                        }
+                    }
+                });
+                
+                // Convertir el objeto a un array y ordenar por conteo
+                const sortedProducts = Object.keys(productSales).map(key => ({
+                    name: key,
+                    ...productSales[key]
+                })).sort((a, b) => b.count - a.count);
+
+                // Actualizar la UI
+                totalRevenueDisplay.textContent = `$${totalRevenue.toFixed(2)}`;
+                totalItemsDisplay.textContent = totalItemsSold.toString();
+                
+                topProductsList.innerHTML = '';
+
+                if (sortedProducts.length === 0) {
+                    topProductsList.innerHTML = '<p class="text-center text-gray-500">No hay transacciones de venta registradas para analizar.</p>';
+                } else {
+                    sortedProducts.forEach(product => {
+                        const itemEl = document.createElement('div');
+                        itemEl.className = 'flex justify-between items-center p-3 bg-white border rounded-lg shadow-sm';
+                        itemEl.innerHTML = `
+                            <div class="flex items-center space-x-3">
+                                <span class="text-2xl">${product.emoji}</span>
+                                <span class="font-medium text-gray-800">${product.name}</span>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-sm font-semibold text-green-700">+${product.revenue.toFixed(2)} USD</p>
+                                <p class="text-xs text-gray-500">${product.count} vendidos</p>
+                            </div>
+                        `;
+                        topProductsList.appendChild(itemEl);
+                    });
+                }
+
+            } catch (error) {
+                console.error("Error al cargar estadísticas de ventas:", error);
+                topProductsList.innerHTML = '<p class="text-center text-red-500">Error al cargar las estadísticas.</p>';
+                showMessage('Error al cargar las estadísticas de ventas.', 'error');
+            }
+        }
+        
+        // --- FUNCIÓN NUEVA: Generar Descripción de Transacción ---
+        function generateTransactionDescription() {
+            if (cart.length === 0) return "";
+
+            // 1. Agrupar los ítems para contar las cantidades
+            const itemCounts = cart.reduce((acc, item) => {
+                const key = item.name; // Usamos el nombre como clave para agrupar
+                if (!acc[key]) {
+                    acc[key] = { count: 0, name: item.name };
+                }
+                acc[key].count++;
+                return acc;
+            }, {});
+
+            // 2. Formatear la cadena: "Nombre xCantidad"
+            const descriptionArray = Object.values(itemCounts).map(item => {
+                return `${item.name} x${item.count}`;
+            });
+
+            // 3. Unir con comas y devolver
+            return descriptionArray.join(', ');
+        }
+        // --- FIN FUNCIÓN NUEVA ---
+
 
         // --- MANEJO DE EVENTOS ---
 
@@ -606,6 +756,7 @@
                 const userCredential = await signInWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
                 
+                // Aseguramos que businessUser se inicialice con info básica
                 businessUser = { uid: user.uid, name: user.displayName || 'Negocio' };
                 
                 productCatalog = await loadProductCatalogFromFirestore(); 
@@ -622,6 +773,17 @@
         });
         
         businessLogoutBtn.addEventListener('click', resetAllState);
+
+        // Eventos para la nueva vista de Estadísticas
+        toggleStatisticsBtn.addEventListener('click', () => {
+             loadSalesStatistics();
+             switchDynamicView('statistics-view');
+        });
+        
+        backToPosBtn.addEventListener('click', () => {
+             switchDynamicView('product-catalog-view');
+        });
+
 
         // V1: Configuración del Cobro (Product Management)
         toggleAddProductFormBtn.addEventListener('click', () => {
@@ -680,6 +842,11 @@
             
             document.getElementById('display-charge-amount-payment-method').textContent = `$${totalAmount.toFixed(2)}`;
             
+            // --- CÓDIGO AÑADIDO/MODIFICADO AQUÍ ---
+            // Pre-llenar la descripción de la transacción con los productos del carrito
+            transactionDescriptionInput.value = generateTransactionDescription(); 
+            // --- FIN CÓDIGO AÑADIDO/MODIFICADO ---
+            
             // Asegurarse de que ninguna opción esté seleccionada al entrar a la vista
             optionHugBank.checked = false;
             optionCash.checked = false;
@@ -692,10 +859,12 @@
         paymentOptionsForm.addEventListener('change', async (e) => {
             const selectedOption = e.target.value;
             
+            // Obtener la descripción del campo de texto (ya sea la autogenerada o la modificada por el usuario)
+            transactionDescription = transactionDescriptionInput.value.trim(); 
+            
             if (selectedOption === 'cash') {
                  // Opción Efectivo - Ejecución directa
                  paymentMethod = 'cash';
-                 transactionDescription = transactionDescriptionInput.value.trim();
                  
                  if (!businessUser) {
                      showCompletionScreen(false, 'Error', 'Sesión del negocio perdida. Por favor, reinicie.');
@@ -710,13 +879,13 @@
                          amount: totalAmount, 
                          hugBankAmount: 0, 
                          cashAmount: totalAmount, 
-                         description: transactionDescription || 'Pago en efectivo', 
+                         description: transactionDescription || 'Pago en efectivo', // Usamos la descripción generada
                          senderId: 'CASH', 
                          recipientId: businessId,
                          type: 'pos-payment-received-cash', // Nuevo tipo para efectivo
                          senderName: 'Pago en efectivo',
                          recipientName: businessUser.name,
-                         items: cart,
+                         items: cart, // ESENCIAL para las estadísticas
                      };
 
                      // 2. Registrar la transacción solo para el negocio
@@ -734,7 +903,6 @@
             } else if (selectedOption === 'hug-bank') {
                  // Opción HUG Bank - Va a Login de Cliente
                  paymentMethod = 'hug-bank';
-                 transactionDescription = transactionDescriptionInput.value.trim();
                  
                  document.getElementById('display-charge-amount-login').textContent = `$${totalAmount.toFixed(2)}`;
                  document.getElementById('display-charge-amount-confirm').textContent = `$${totalAmount.toFixed(2)}`;
@@ -826,8 +994,9 @@
                         transaction.update(businessRef, { balance: newBusinessBalance });
                     }
                 });
-
-                const customerData = await getAccountData(customerId);
+                
+                // NOTA: Usar la 'transactionDescription' que se guardó al seleccionar el método de pago
+                
                 const transactionDetails = {
                     amount: totalAmount, 
                     hugBankAmount: totalAmount, // Solo HUG Bank
@@ -835,14 +1004,18 @@
                     description: transactionDescription, 
                     senderId: customerId, 
                     recipientId: businessId,
-                    type: 'pos-payment-sent', // Tipo simple
-                    senderName: customerData.name,
+                    type: 'pos-payment-sent', // Tipo simple para el cliente
+                    senderName: customerUser.displayName || 'Cliente',
                     recipientName: businessUser.name,
-                    items: cart 
+                    items: cart // ESENCIAL para las estadísticas
                 };
 
-                await createTransaction(customerId, transactionDetails);
-                transactionDetails.type = 'pos-payment-received';
+                // Transacción para el Cliente (Salida de dinero)
+                await createTransaction(customerId, transactionDetails); 
+                
+                // Transacción para el Negocio (Entrada de dinero)
+                transactionDetails.type = 'pos-payment-received'; 
+                transactionDetails.senderName = customerUser.displayName || 'Cliente'; // Asegurar el nombre en el lado del negocio
                 await createTransaction(businessId, transactionDetails);
                 
                 const finalMessage = `Se cobró $${chargeAmount.toFixed(2)} al cliente y se acreditó al negocio. ${transactionDescription ? '(' + transactionDescription + ')' : ''}`;
@@ -877,6 +1050,7 @@
                 productCatalog = await loadProductCatalogFromFirestore(); 
                 updateProductListDisplay(); 
                 
+                // Después de iniciar sesión, se vuelve a la vista de catálogo
                 switchDynamicView('product-catalog-view');
                 
             } else if (user && businessUser && user.uid !== businessUser.uid && paymentMethod === 'hug-bank' && totalAmount > 0) {
@@ -886,9 +1060,11 @@
                 document.getElementById('display-current-balance').textContent = `$${balance.toFixed(2)}`;
                 document.getElementById('display-charge-amount-confirm').textContent = `$${totalAmount.toFixed(2)}`;
                 
+                // Si el cliente está logueado, se va a la confirmación
                 switchDynamicView('payment-confirmation-view');
             
             } else if (!user && businessUser) {
+                // Si se cierra la sesión del cliente (después del pago o cancelado)
                 if (totalAmount > 0 && paymentMethod === null) {
                     // Si el usuario cancela el login, vuelve a la selección de pago
                     switchDynamicView('payment-method-view');
@@ -897,6 +1073,7 @@
                 }
 
             } else {
+                // Sin ningún usuario logueado, ir al login de negocio
                  switchAppView('business-login');
             }
         });
