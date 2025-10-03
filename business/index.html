@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="shortcut icon" href="../bank.png" />
-    <title>HUG Bank - Sistema de Pago para Negocios (POS)</title>
+    <title>Hug-Bank! • Business</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         :root {
@@ -315,7 +315,6 @@
         let paymentMethod = null; 
         let productCatalog = []; 
         let transactionDescription = ''; 
-        // Eliminada: let cashPaymentAmount = 0; 
         
         // --- REFERENCIAS DE UI ---
         const messageBox = document.getElementById('message-box');
@@ -339,11 +338,6 @@
         const paymentOptionsForm = document.getElementById('payment-options-form'); 
         const transactionDescriptionInput = document.getElementById('transaction-description'); 
         
-        // Eliminadas referencias de Pago Múltiple
-        // const cashAmountInput = document.getElementById('cash-amount');
-        // const hugBankRemainingAmountDisplay = document.getElementById('hug-bank-remaining-amount');
-        // const multiplePaymentFields = document.getElementById('multiple-payment-fields');
-        // const proceedMultiplePaymentBtn = document.getElementById('proceed-multiple-payment-btn');
         const cancelPaymentSelectionBtn = document.getElementById('cancel-payment-selection-btn'); 
         const confirmPaymentBtn = document.getElementById('confirm-payment-btn');
         const cancelLoginBtn = document.getElementById('cancel-login-btn');
@@ -352,7 +346,6 @@
         
         const optionHugBank = document.getElementById('option-hug-bank');
         const optionCash = document.getElementById('option-cash');
-        // Eliminada: const optionMultiple = document.getElementById('option-multiple');
 
         // --- FUNCIONES DE VISTA ---
         
@@ -413,7 +406,6 @@
                 // Ruta: /artifacts/{appId}/users/{userId}/config/products
                 const productConfigRef = doc(db, `artifacts/${appId}/users/${businessUser.uid}/config/products`);
                 await setDoc(productConfigRef, { catalog: products, updated: serverTimestamp() });
-                // El error de permisos desaparece al mantener la sesión abierta
             } catch (error) {
                 console.error("Error al guardar el catálogo:", error);
                 showMessage('Error al guardar el catálogo. No persistirá.', 'error');
@@ -441,14 +433,12 @@
              totalAmount = 0;
              paymentMethod = null;
              transactionDescription = ''; 
-             // cashPaymentAmount = 0; // Eliminado
              document.getElementById('customer-login-form').reset();
              document.getElementById('transaction-description').value = ''; 
              
              // Resetear opciones de pago
              optionHugBank.checked = false;
              optionCash.checked = false;
-             // Eliminado reset de multiple payment fields
              
              updateCartDisplay(); 
              switchDynamicView('product-catalog-view');
@@ -462,10 +452,19 @@
              paymentMethod = null;
              productCatalog = []; 
              transactionDescription = ''; 
-             // Eliminado: cashPaymentAmount = 0; 
              
              switchAppView('business-login');
         }
+        
+        function deleteProduct(index) {
+             const productName = productCatalog[index].name;
+             if (confirm(`¿Estás seguro de que quieres eliminar "${productName}" del catálogo?`)) {
+                 productCatalog.splice(index, 1);
+                 saveProductCatalogToFirestore(productCatalog);
+                 updateProductListDisplay();
+                 showMessage(`"${productName}" ha sido eliminado del catálogo.`, 'info');
+             }
+         }
         
         function updateProductListDisplay() {
             productList.innerHTML = '';
@@ -475,17 +474,29 @@
             } else {
                 productCatalog.forEach((product, index) => {
                     const card = document.createElement('div');
-                    card.className = 'product-card bg-gray-100 p-3 text-center rounded-lg';
+                    // Añadimos 'relative group' para el botón de borrar
+                    card.className = 'product-card bg-gray-100 p-3 text-center rounded-lg relative group'; 
                     card.dataset.index = index;
                     card.innerHTML = `
+                         <button data-index="${index}" class="delete-product-btn absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs leading-none opacity-0 group-hover:opacity-100 transition-opacity z-10" title="Eliminar Producto">&times;</button>
                         <span class="block text-2xl">${product.emoji}</span>
                         <p class="text-sm font-medium truncate">${product.name}</p>
                         <p class="text-xs font-bold text-gray-700">$${product.price.toFixed(2)}</p>
                     `;
+                    
+                    // Evento para añadir al carrito (IGNORA si se hace clic en el botón de borrar)
                     card.addEventListener('click', (e) => {
+                         if (e.target.classList.contains('delete-product-btn')) return;
                          const idx = parseInt(e.currentTarget.dataset.index);
                          addProductToCart(productCatalog[idx]);
                     });
+                    
+                    // Evento para borrar el producto
+                    card.querySelector('.delete-product-btn').addEventListener('click', (e) => {
+                         const idx = parseInt(e.currentTarget.dataset.index);
+                         deleteProduct(idx);
+                    });
+                    
                     productList.appendChild(card);
                 });
             }
@@ -600,10 +611,6 @@
                 productCatalog = await loadProductCatalogFromFirestore(); 
                 document.getElementById('business-name-display').textContent = businessUser.name;
                 
-                // === LÍNEA CRUCIAL ELIMINADA ===
-                // signOut(auth); 
-                // La línea anterior causaba que el negocio perdiera los permisos inmediatamente.
-                
                 updateCartDisplay(); 
                 updateProductListDisplay(); 
                 switchDynamicView('product-catalog-view'); 
@@ -682,7 +689,7 @@
 
         
         // V2: Selección de Método de Pago (Simplificada)
-        paymentOptionsForm.addEventListener('change', (e) => {
+        paymentOptionsForm.addEventListener('change', async (e) => {
             const selectedOption = e.target.value;
             
             if (selectedOption === 'cash') {
@@ -690,8 +697,39 @@
                  paymentMethod = 'cash';
                  transactionDescription = transactionDescriptionInput.value.trim();
                  
-                 const msgDesc = transactionDescription ? ` (${transactionDescription})` : ''; 
-                 showCompletionScreen(true, 'Cobro en Efectivo Exitoso', `Se recibió $${totalAmount.toFixed(2)} en efectivo${msgDesc}.`);
+                 if (!businessUser) {
+                     showCompletionScreen(false, 'Error', 'Sesión del negocio perdida. Por favor, reinicie.');
+                     return;
+                 }
+                 
+                 try {
+                     const businessId = businessUser.uid;
+                     
+                     // 1. Crear el objeto de la transacción para efectivo
+                     const transactionDetails = {
+                         amount: totalAmount, 
+                         hugBankAmount: 0, 
+                         cashAmount: totalAmount, 
+                         description: transactionDescription || 'Pago en efectivo', 
+                         senderId: 'CASH', 
+                         recipientId: businessId,
+                         type: 'pos-payment-received-cash', // Nuevo tipo para efectivo
+                         senderName: 'Pago en efectivo',
+                         recipientName: businessUser.name,
+                         items: cart,
+                     };
+
+                     // 2. Registrar la transacción solo para el negocio
+                     await createTransaction(businessId, transactionDetails);
+
+                     const msgDesc = transactionDescription ? ` (${transactionDescription})` : ''; 
+                     showCompletionScreen(true, 'Cobro en Efectivo Exitoso', `Se recibió $${totalAmount.toFixed(2)} en efectivo${msgDesc}. Transacción registrada.`);
+                     
+                 } catch (error) {
+                      console.error("Error al registrar transacción en efectivo:", error);
+                      showCompletionScreen(false, 'Error', `Cobro en efectivo realizado, pero falló el registro de la transacción: ${error.message}`);
+                 }
+
 
             } else if (selectedOption === 'hug-bank') {
                  // Opción HUG Bank - Va a Login de Cliente
@@ -703,8 +741,6 @@
                  switchDynamicView('customer-login-view');
             }
         });
-
-        // Eventos de Pago Múltiple Eliminados
 
         cancelPaymentSelectionBtn.addEventListener('click', () => {
             resetChargeState();
@@ -718,8 +754,6 @@
             const email = document.getElementById('customer-email').value;
             const password = document.getElementById('customer-password').value;
             
-            // signOut(auth); // Línea que podría causar problemas si el negocio estuviera activo.
-
             try {
                 const userCredential = await signInWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
