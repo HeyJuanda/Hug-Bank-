@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="shortcut icon" href="bank.png" />
-    <title>HUG Bank - Tu Banco Digital</title>
+    <title>Hug-Bank! • Tu Banco Digital</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* [Se mantiene todo el bloque de estilos CSS] */
@@ -1614,16 +1614,14 @@
                     break;
                 default:
                     // FIX #3: Transacciones desconocidas con signo + o -
-                    typeText = `Transacción Desconocida`;
+                    typeText = ``;
                     textColor = 'text-gray-500';
-                    borderColor = 'border-gray-300';
+                    borderColor = 'border-blue-500';
                     
                     if (senderIsMe) {
                         amountDisplay = `<p class="text-md font-bold text-red-600">-$${amount.toFixed(2)}</p>`;
-                        senderRecipientText = `a ID desconocido (${transaction.type})`;
                     } else {
                         amountDisplay = `<p class="text-md font-bold text-green-600">+$${amount.toFixed(2)}</p>`;
-                        senderRecipientText = `de ID desconocido (${transaction.type})`;
                     }
                     break;
             }
