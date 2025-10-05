@@ -1303,7 +1303,7 @@
             // Consulta para Deudas/Ofertas (solo 'loan-offer' o 'loan-debt' con status 'pending-offer' o 'pending')
             // FIX #1: Se elimina 'orderBy' para evitar el error de índice compuesto de Firestore con la cláusula 'in'.
             const pendingQuery = query(transactionsRef, 
-                where('status', 'in', ['pending-offer', 'pending', 'completed', 'completed-paid-penalized']) // Se añade 'completed-paid-penalized' para el nuevo botón de puntuar
+                where('status', 'in', ['pending-offer', 'pending', 'completed', 'completed-paid-penalized', 'completed-paid']) // Se añade 'completed-paid-penalized' para el nuevo botón de puntuar
             );
 
             // Listener para el Historial Completo
@@ -1504,29 +1504,32 @@
                                     data-id="${docId}" data-recipient="${transaction.recipientId}">Marcar como Pagado (5% P.)</button>
                             `;
                         }
-                    } else if (status === 'completed-paid') {
-                        typeText = 'Préstamo Cobrado';
-                        textColor = 'text-green-700';
-                        borderColor = 'border-green-500';
-                        // El cálculo neto de lo recibido no es trivial en el cliente, se muestra el monto bruto por defecto
-                        amountDisplay = `<p class="text-md font-bold text-green-700">+$${(transaction.paidAmount || 0).toFixed(2)}</p>`;
-                        details = `<p class="text-xs text-gray-600">Pagado el: ${new Date(transaction.paidDate.toDate()).toLocaleDateString('es-ES')}</p>`;
-                    } else if (status === 'completed-paid-penalized') {
-                        typeText = 'Préstamo Cancelado (Penalizado)';
-                        textColor = 'text-yellow-700';
-                        borderColor = 'border-yellow-500';
-                         const amountReceived = transaction.paidAmount - transaction.penaltyAmount;
-                         amountDisplay = `<p class="text-md font-bold text-yellow-700">+$${amountReceived.toFixed(2)} (Neto)</p>`;
-                         details = `<p class="text-xs text-gray-600">Penalidad: $${transaction.penaltyAmount.toFixed(2)}</p>`;
-                    }
-                    
-                    // Botón de Puntuar: Aparece si está pagado o penalizado, y no ha sido puntuado
-                    if (isDebtList && (status === 'completed-paid-penalized' || status === 'completed-paid') && transaction.scoreGiven !== true) {
-                         buttonHtml += `
-                            <button class="score-debtor-btn w-full py-1 px-3 rounded-full text-xs font-semibold text-white bg-green-500 hover:bg-green-600 transition mt-1" 
-                                data-id="${docId}" data-recipient="${transaction.recipientId}" data-recipientname="${recipientName}">Puntuar</button>
-                         `;
-                    }
+} else if (status === 'completed-paid') { // <--- ESTE ES EL ESTADO QUE ACTIVA EL BOTÓN
+                typeText = 'Préstamo Cobrado';
+                textColor = 'text-green-700';
+                borderColor = 'border-green-500';
+                // El cálculo neto de lo recibido no es trivial en el cliente, se muestra el monto bruto por defecto
+                amountDisplay = `<p class="text-md font-bold text-green-700">+$${(transaction.paidAmount || 0).toFixed(2)}</p>`;
+                details = `<p class="text-xs text-gray-600">Pagado el: ${new Date(transaction.paidDate.toDate()).toLocaleDateString('es-ES')}</p>`;
+            
+            // Si está Pagado y Penalizado (Tú lo marcaste como pagado)
+            } else if (status === 'completed-paid-penalized') {
+                typeText = 'Préstamo Cancelado (Penalizado)';
+                textColor = 'text-yellow-700';
+                borderColor = 'border-yellow-500';
+                 const amountReceived = transaction.paidAmount - transaction.penaltyAmount;
+                 amountDisplay = `<p class="text-md font-bold text-yellow-700">+$${amountReceived.toFixed(2)} (Neto)</p>`;
+                 details = `<p class="text-xs text-gray-600">Penalidad: $${transaction.penaltyAmount.toFixed(2)}</p>`;
+            }
+            
+            // Botón de Puntuar: Aparece si está pagado o penalizado, y no ha sido puntuado
+            // *** ESTA ES LA LÍNEA QUE DEBE SER CORRECTA ***
+            if (isDebtList && (status === 'completed-paid' || status === 'completed-paid-penalized') && transaction.scoreGiven !== true) {
+                 buttonHtml += `
+                     <button class="score-debtor-btn w-full py-1 px-3 rounded-full text-xs font-semibold text-white bg-green-500 hover:bg-green-600 transition mt-1" 
+                         data-id="${docId}" data-recipient="${transaction.recipientId}" data-recipientname="${recipientName}">Puntuar</button>
+                 `;
+            }
                     
                     break;
                 case 'loan-debt':
