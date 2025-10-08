@@ -234,7 +234,7 @@
             
                                  <div class="bg-blue-50 p-6 rounded-xl border border-blue-200 mb-6">
                                     <p class="text-sm text-blue-600">Total a Cobrar</p>
-                                    <h3 class="text-5xl font-extrabold mt-1 text-hug-danger" id="display-charge-amount-confirm">$0.00</h3>
+                                    <h3 class="text-5xl font-extrabold mt-1" id="display-charge-amount-confirm">$0.00</h3>
                                     <p class="text-sm text-blue-600 mt-2">Tu Saldo Actual: <span id="display-current-balance" class="font-bold">$0.00</span></p>
                                  </div>
                                  
@@ -266,6 +266,19 @@
                         <div id="statistics-view" class="hidden flex-grow flex flex-col">
                              <h3 class="text-xl font-semibold mb-3">Estadísticas de Ventas</h3>
                              
+                             <div class="mb-4 flex items-center space-x-3">
+                                <label for="stats-period-selector" class="text-sm font-medium">Periodo:</label>
+                                <select id="stats-period-selector" class="px-3 py-1 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                                    <option value="daily">Día Actual</option>
+                                    <option value="monthly">Mes Actual</option>
+                                    <option value="yearly">Año Actual</option>
+                                    <option value="total" selected>Total</option>
+                                </select>
+                                <button id="refresh-stats-btn" class="py-1 px-3 rounded-lg text-sm font-semibold text-white bg-green-500 hover:bg-green-700">
+                                    Actualizar
+                                </button>
+                             </div>
+                             
                              <div class="grid grid-cols-2 gap-4 mb-4">
                                 <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
                                      <p class="text-sm font-medium text-blue-600">Ingreso Total</p>
@@ -277,18 +290,17 @@
                                 </div>
                              </div>
                              
-                             <h4 class="text-lg font-semibold mb-2 mt-2 border-t pt-4">Productos Más Vendidos (Todas las Ventas)</h4>
+                             <h4 class="text-lg font-semibold mb-2 mt-2 border-t pt-4">Productos Más Vendidos</h4>
                              
                              <div id="top-products-list" class="space-y-3 overflow-y-auto flex-grow pr-1">
-                                <p class="text-center text-gray-500" id="empty-stats-message">Cargando datos de ventas...</p>
+                                <p class="text-center text-gray-500" id="empty-stats-message">Seleccione un periodo y actualice.</p>
                              </div>
 
                              <button id="back-to-pos-btn" class="w-full mt-4 py-2 px-4 rounded-full text-sm font-semibold text-white bg-gray-500 hover:bg-gray-700">
                                 Volver al Punto de Venta
                             </button>
                         </div>
-                        
-                    </div>
+                        </div>
                 </div>
                 <div class="md:col-span-2 p-4 md:p-6 flex flex-col border-t md:border-t-0">
                     <h3 class="text-xl font-semibold mb-3">Total y Carrito</h3>
@@ -320,10 +332,10 @@
     
     <script type="module">
         // IMPORTACIONES DE FIREBASE
+        // Se añade 'where' a las importaciones
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signOut, onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        // Añadida la importación 'getDocs' y 'query' para las estadísticas
-        import { getFirestore, doc, setDoc, getDoc, runTransaction, collection, addDoc, serverTimestamp, getDocs, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, runTransaction, collection, addDoc, serverTimestamp, getDocs, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- CONFIGURACIÓN E INICIALIZACIÓN DE FIREBASE (DEMO CONFIG) ---
         const demoFirebaseConfig = {
@@ -376,6 +388,10 @@
         const totalRevenueDisplay = document.getElementById('total-revenue-display');
         const totalItemsDisplay = document.getElementById('total-items-display');
         const topProductsList = document.getElementById('top-products-list');
+        
+        // NUEVAS Referencias para el selector de estadísticas
+        const statsPeriodSelector = document.getElementById('stats-period-selector');
+        const refreshStatsBtn = document.getElementById('refresh-stats-btn');
         
         const paymentOptionsForm = document.getElementById('payment-options-form'); 
         const transactionDescriptionInput = document.getElementById('transaction-description'); 
@@ -639,9 +655,47 @@
         }
 
         
-        // --- FUNCIÓN DE ESTADÍSTICAS ---
+        // --- FUNCIÓN DE RANGO DE TIEMPO (NUEVA) ---
+        
+        /**
+         * Calcula el rango de tiempo (start y end Date objects) para el periodo seleccionado.
+         * @param {string} period 'daily', 'monthly', 'yearly', 'total'
+         * @returns {{start: Date|null, end: Date|null}}
+         */
+        function getPeriodRange(period) {
+            const now = new Date();
+            let start = null;
+            let end = null; 
 
-        async function loadSalesStatistics() {
+            switch (period) {
+                case 'daily':
+                    // Inicio del día actual (00:00:00)
+                    start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+                    // Final del día actual (23:59:59.999)
+                    end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+                    break;
+                case 'monthly':
+                    // Inicio del mes actual (día 1, 00:00:00)
+                    start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+                    // Final del mes actual (último día, 23:59:59.999)
+                    end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+                    break;
+                case 'yearly':
+                    // Inicio del año actual (1 de enero, 00:00:00)
+                    start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+                    // Final del año actual (31 de diciembre, 23:59:59.999)
+                    end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+                    break;
+                case 'total':
+                default:
+                    return { start: null, end: null }; // Sin filtro de fecha
+            }
+            return { start, end };
+        }
+        
+        // --- FUNCIÓN DE ESTADÍSTICAS MODIFICADA ---
+
+        async function loadSalesStatistics(period = 'total') {
             topProductsList.innerHTML = '<p class="text-center text-gray-500">Cargando datos de ventas...</p>';
             totalRevenueDisplay.textContent = '$0.00';
             totalItemsDisplay.textContent = '0';
@@ -650,10 +704,19 @@
 
             const transactionsRef = collection(db, `artifacts/${appId}/users/${businessUser.uid}/transactions`);
             
-            // Aquí se podría añadir un 'query(transactionsRef, where(...), orderBy(...))'
-            // para filtrar por fecha si fuese necesario. Por simplicidad, cargamos todo.
             try {
-                const q = query(transactionsRef);
+                const { start, end } = getPeriodRange(period);
+                let q = query(transactionsRef);
+
+                if (start && end) {
+                     // Aplicar el filtro de rango de fecha a la consulta
+                     // ¡IMPORTANTE! Requiere un índice compuesto en Firestore: timestamp (asc), type (asc)
+                     q = query(transactionsRef, 
+                         where('timestamp', '>=', start),
+                         where('timestamp', '<=', end)
+                     );
+                }
+                
                 const querySnapshot = await getDocs(q);
                 
                 let totalRevenue = 0;
@@ -696,7 +759,7 @@
                 topProductsList.innerHTML = '';
 
                 if (sortedProducts.length === 0) {
-                    topProductsList.innerHTML = '<p class="text-center text-gray-500">No hay transacciones de venta registradas para analizar.</p>';
+                    topProductsList.innerHTML = '<p class="text-center text-gray-500">No hay transacciones de venta registradas para este periodo.</p>';
                 } else {
                     sortedProducts.forEach(product => {
                         const itemEl = document.createElement('div');
@@ -717,7 +780,7 @@
 
             } catch (error) {
                 console.error("Error al cargar estadísticas de ventas:", error);
-                topProductsList.innerHTML = '<p class="text-center text-red-500">Error al cargar las estadísticas.</p>';
+                topProductsList.innerHTML = '<p class="text-center text-red-500">Error al cargar las estadísticas. Asegúrese de tener el índice de Firestore correcto.</p>';
                 showMessage('Error al cargar las estadísticas de ventas.', 'error');
             }
         }
@@ -778,14 +841,23 @@
         businessLogoutBtn.addEventListener('click', resetAllState);
 
         // Eventos para la nueva vista de Estadísticas
+        const updateStatsHandler = () => {
+             const selectedPeriod = statsPeriodSelector.value;
+             loadSalesStatistics(selectedPeriod);
+        };
+        
         toggleStatisticsBtn.addEventListener('click', () => {
-             loadSalesStatistics();
+             updateStatsHandler(); // Carga inicial al entrar
              switchDynamicView('statistics-view');
         });
         
         backToPosBtn.addEventListener('click', () => {
              switchDynamicView('product-catalog-view');
         });
+        
+        // NUEVOS Event Listeners para el selector y el botón
+        statsPeriodSelector.addEventListener('change', updateStatsHandler);
+        refreshStatsBtn.addEventListener('click', updateStatsHandler);
 
 
         // V1: Configuración del Cobro (Product Management)
@@ -845,10 +917,8 @@
             
             document.getElementById('display-charge-amount-payment-method').textContent = `$${totalAmount.toFixed(2)}`;
             
-            // --- CÓDIGO AÑADIDO/MODIFICADO AQUÍ ---
             // Pre-llenar la descripción de la transacción con los productos del carrito
             transactionDescriptionInput.value = generateTransactionDescription(); 
-            // --- FIN CÓDIGO AÑADIDO/MODIFICADO ---
             
             // Asegurarse de que ninguna opción esté seleccionada al entrar a la vista
             optionHugBank.checked = false;
@@ -862,7 +932,7 @@
         paymentOptionsForm.addEventListener('change', async (e) => {
             const selectedOption = e.target.value;
             
-            // Obtener la descripción del campo de texto (ya sea la autogenerada o la modificada por el usuario)
+            // Obtener la descripción del campo de texto
             transactionDescription = transactionDescriptionInput.value.trim(); 
             
             if (selectedOption === 'cash') {
