@@ -48,7 +48,7 @@
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             border-color: var(--hug-primary);
         }
-        input[type="text"][id="product-emoji"] {
+        input[type="text"][id="product-emoji"], input[type="text"][id="edit-product-emoji"] {
             font-size: 1.5rem;
             text-align: center;
         }
@@ -125,8 +125,40 @@
             <div class="grid grid-cols-1 md:grid-cols-5 min-h-[500px]">
                 
                 <div class="md:col-span-3 p-4 md:p-6 border-r flex flex-col">
-                    <div id="dynamic-pos-panel" class="flex-grow flex flex-col">
+                    <div id="dynamic-pos-panel" class="flex-grow flex flex-col relative">
                         
+                        <div id="edit-product-modal" class="absolute inset-0 bg-white bg-opacity-95 z-20 p-6 md:p-8 hidden">
+                            <h3 class="text-2xl font-bold mb-6 text-center text-hug-header">Editar Producto</h3>
+                            <form id="edit-product-form" class="space-y-4 max-w-sm mx-auto bg-card p-6 shadow-xl">
+                                <input type="hidden" id="edit-product-index">
+                                
+                                <div class="grid grid-cols-6 gap-3">
+                                     <div class="col-span-1">
+                                         <label for="edit-product-emoji" class="block text-sm font-medium">Emoji</label>
+                                         <input type="text" id="edit-product-emoji" maxlength="2" required
+                                               class="mt-1 block w-full px-1 py-1 border rounded-lg focus:ring-blue-500 focus:border-blue-500 text-3xl text-center">
+                                     </div>
+                                     <div class="col-span-5">
+                                         <label for="edit-product-name" class="block text-sm font-medium">Nombre</label>
+                                         <input type="text" id="edit-product-name" required placeholder="Nombre del Producto"
+                                               class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                                     </div>
+                                </div>
+                                
+                                <div>
+                                     <label for="edit-product-price" class="block text-sm font-medium">Precio ($)</label>
+                                     <input type="number" id="edit-product-price" required min="0.01" step="0.01" placeholder="9.99"
+                                           class="mt-1 block w-full px-3 py-2 border rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                                </div>
+
+                                <button type="submit" class="w-full py-3 px-4 rounded-full text-lg font-semibold text-white btn-primary">
+                                    Guardar Cambios
+                                </button>
+                                <button type="button" id="cancel-edit-btn" class="w-full py-2 px-4 rounded-full text-sm font-semibold text-gray-700 bg-gray-200 hover:bg-gray-300">
+                                    Cancelar Edición
+                                </button>
+                            </form>
+                        </div>
                         <div id="product-catalog-view"> 
                             <h3 class="text-xl font-semibold mb-3 flex justify-between items-center">
                                 Catálogo de Productos
@@ -374,6 +406,15 @@
         const cartItemsContainer = document.getElementById('cart-items'); 
         const displayTotalAmount = document.getElementById('display-total-amount'); 
         
+        // Referencias de Edición (NUEVAS)
+        const editProductModal = document.getElementById('edit-product-modal');
+        const editProductForm = document.getElementById('edit-product-form');
+        const cancelEditBtn = document.getElementById('cancel-edit-btn');
+        const editProductIndexInput = document.getElementById('edit-product-index');
+        const editProductNameInput = document.getElementById('edit-product-name');
+        const editProductEmojiInput = document.getElementById('edit-product-emoji');
+        const editProductPriceInput = document.getElementById('edit-product-price');
+
         // Referencias del nuevo flujo de Vistas
         const paymentMethodView = document.getElementById('payment-method-view');
         const customerLoginView = document.getElementById('customer-login-view');
@@ -526,6 +567,85 @@
                  showMessage(`"${productName}" ha sido eliminado del catálogo.`, 'info');
              }
          }
+         
+        // --- FUNCIONES DE EDICIÓN (NUEVAS) ---
+
+        /**
+         * Abre el modal de edición y carga los datos del producto.
+         * @param {number} index El índice del producto en el array productCatalog.
+         */
+        function openEditProductModal(index) {
+            const product = productCatalog[index];
+            if (!product) {
+                showMessage('Error: Producto no encontrado.', 'error');
+                return;
+            }
+
+            // 1. Cargar datos en el formulario
+            editProductIndexInput.value = index;
+            editProductNameInput.value = product.name;
+            editProductEmojiInput.value = product.emoji;
+            editProductPriceInput.value = product.price.toFixed(2);
+            
+            // 2. Mostrar el modal
+            editProductModal.classList.remove('hidden');
+        }
+
+        /**
+         * Oculta el modal de edición y limpia el formulario.
+         */
+        function closeEditProductModal() {
+            editProductModal.classList.add('hidden');
+            editProductForm.reset();
+        }
+
+        /**
+         * Maneja el envío del formulario de edición.
+         * @param {Event} e Evento de submit.
+         */
+        function handleEditProductSubmit(e) {
+            e.preventDefault();
+            const index = parseInt(editProductIndexInput.value);
+            const name = editProductNameInput.value.trim();
+            const emoji = editProductEmojiInput.value.trim().slice(0, 2); 
+            let price;
+
+            try {
+                 price = parseFloat(editProductPriceInput.value);
+                 if (isNaN(price) || price <= 0) {
+                      throw new Error("Precio inválido");
+                 }
+            } catch (error) {
+                 showMessage('Por favor, ingrese un precio positivo y válido.', 'error');
+                 return;
+            }
+            
+            if (name.length === 0) {
+                 showMessage('El nombre del producto no puede estar vacío.', 'error');
+                 return;
+            }
+
+            // 1. Actualizar el catálogo local
+            const updatedProduct = { 
+                name: name, 
+                price: parseFloat(price.toFixed(2)), 
+                emoji: emoji || '📦' 
+            };
+            
+            productCatalog[index] = updatedProduct;
+
+            // 2. Guardar los cambios en Firestore
+            saveProductCatalogToFirestore(productCatalog);
+            
+            // 3. Actualizar la UI del catálogo
+            updateProductListDisplay();
+            
+            // 4. Cerrar el modal y mostrar mensaje
+            closeEditProductModal();
+            showMessage(`"${name}" ha sido actualizado.`, 'success');
+        }
+        
+        // --- FIN FUNCIONES DE EDICIÓN ---
         
         function updateProductListDisplay() {
             productList.innerHTML = '';
@@ -535,19 +655,20 @@
             } else {
                 productCatalog.forEach((product, index) => {
                     const card = document.createElement('div');
-                    // Añadimos 'relative group' para el botón de borrar
+                    // Añadimos 'relative group' para el botón de borrar/editar
                     card.className = 'product-card bg-gray-100 p-3 text-center rounded-lg relative group'; 
                     card.dataset.index = index;
                     card.innerHTML = `
                          <button data-index="${index}" class="delete-product-btn absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs leading-none opacity-0 group-hover:opacity-100 transition-opacity z-10" title="Eliminar Producto">&times;</button>
-                        <span class="block text-2xl">${product.emoji}</span>
+                         <button data-index="${index}" class="edit-product-btn absolute top-1 left-1 bg-blue-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs leading-none opacity-0 group-hover:opacity-100 transition-opacity z-10" title="Editar Producto">✎</button>
+                         <span class="block text-2xl">${product.emoji}</span>
                         <p class="text-sm font-medium truncate">${product.name}</p>
                         <p class="text-xs font-bold text-gray-700">$${product.price.toFixed(2)}</p>
                     `;
                     
-                    // Evento para añadir al carrito (IGNORA si se hace clic en el botón de borrar)
+                    // Evento para añadir al carrito (IGNORA si se hace clic en el botón de borrar/editar)
                     card.addEventListener('click', (e) => {
-                         if (e.target.classList.contains('delete-product-btn')) return;
+                         if (e.target.classList.contains('delete-product-btn') || e.target.classList.contains('edit-product-btn')) return; 
                          const idx = parseInt(e.currentTarget.dataset.index);
                          addProductToCart(productCatalog[idx]);
                     });
@@ -556,6 +677,12 @@
                     card.querySelector('.delete-product-btn').addEventListener('click', (e) => {
                          const idx = parseInt(e.currentTarget.dataset.index);
                          deleteProduct(idx);
+                    });
+                    
+                    // EVENTO PARA EDITAR PRODUCTO (NUEVO)
+                    card.querySelector('.edit-product-btn').addEventListener('click', (e) => {
+                         const idx = parseInt(e.currentTarget.dataset.index);
+                         openEditProductModal(idx);
                     });
                     
                     productList.appendChild(card);
@@ -907,6 +1034,11 @@
              updateCartDisplay();
              showMessage('Carrito de compras vaciado.', 'info');
         });
+
+        // --- MANEJO DE EVENTOS DE EDICIÓN (NUEVOS) ---
+        editProductForm.addEventListener('submit', handleEditProductSubmit);
+        cancelEditBtn.addEventListener('click', closeEditProductModal);
+        // --- FIN MANEJO DE EVENTOS DE EDICIÓN ---
 
         // Evento: Proceder al Pago (Checkout)
         checkoutBtn.addEventListener('click', () => {
