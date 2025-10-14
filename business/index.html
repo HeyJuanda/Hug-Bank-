@@ -384,9 +384,9 @@
     <script type="module">
         // IMPORTACIONES DE FIREBASE
         // Se añade 'where' a las importaciones
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signOut, onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, runTransaction, collection, addDoc, serverTimestamp, getDocs, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signOut, onAuthStateChanged, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, runTransaction, collection, addDoc, serverTimestamp, getDocs, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // --- CONFIGURACIÓN E INICIALIZACIÓN DE FIREBASE (DEMO CONFIG) ---
         const demoFirebaseConfig = {
@@ -401,17 +401,22 @@
         const firebaseConfig = (typeof __firebase_config !== 'undefined' && __firebase_config) ? JSON.parse(__firebase_config) : demoFirebaseConfig;
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app); // Para negocio
+    const db = getFirestore(app);
 
-        // Variables de sesión
-        let businessUser = null; 
-        let cart = []; 
-        let totalAmount = 0; 
-        let paymentMethod = null; 
-        let productCatalog = []; 
-        let transactionDescription = ''; 
+    // Instancia secundaria para el cliente
+    const clientApp = initializeApp(firebaseConfig, 'client');
+    const clientAuth = getAuth(clientApp);
+
+    // Variables de sesión
+    let businessUser = null; 
+    let cart = []; 
+    let totalAmount = 0; 
+    let paymentMethod = null; 
+    let productCatalog = []; 
+    let transactionDescription = '';
+    let clientUser = null;
         
         // --- REFERENCIAS DE UI ---
         const messageBox = document.getElementById('message-box');
@@ -801,11 +806,11 @@
             }
             titleEl.textContent = title;
             messageEl.textContent = message;
-            
-            if(paymentMethod === 'hug-bank') {
-                signOut(auth).catch(() => {});
+            // Cerrar sesión del cliente tras la transacción
+            if (typeof clientAuth !== 'undefined' && clientAuth.currentUser) {
+                clientAuth.signOut().catch(() => {});
+                clientUser = null;
             }
-            
             switchDynamicView('transaction-complete-view');
         }
 
@@ -981,28 +986,28 @@
             e.preventDefault();
             const email = document.getElementById('business-email').value;
             const password = document.getElementById('business-password').value;
-
             try {
                 const userCredential = await signInWithEmailAndPassword(auth, email, password);
                 const user = userCredential.user;
-                
-                // Aseguramos que businessUser se inicialice con info básica
                 businessUser = { uid: user.uid, name: user.displayName || 'Negocio' };
-                
-                productCatalog = await loadProductCatalogFromFirestore(); 
+                // Guardar sesión en localStorage
+                localStorage.setItem('hugbank-business-user', JSON.stringify({ uid: user.uid, name: businessUser.name, email: user.email }));
+                productCatalog = await loadProductCatalogFromFirestore();
                 document.getElementById('business-name-display').textContent = businessUser.name;
-                
-                updateCartDisplay(); 
-                updateProductListDisplay(); 
-                switchDynamicView('product-catalog-view'); 
-
+                updateCartDisplay();
+                updateProductListDisplay();
+                switchDynamicView('product-catalog-view');
             } catch (error) {
                 console.error("Error de inicio de sesión del negocio:", error);
                 showMessage('Error de inicio de sesión: Credenciales del negocio incorrectas.', 'error');
             }
         });
         
-        businessLogoutBtn.addEventListener('click', resetAllState);
+        businessLogoutBtn.addEventListener('click', () => {
+            // Limpiar localStorage y cerrar sesión
+            localStorage.removeItem('hugbank-business-user');
+            resetAllState();
+        });
 
         // Eventos para la nueva vista de Estadísticas
         const updateStatsHandler = () => {
@@ -1163,17 +1168,14 @@
             e.preventDefault();
             const email = document.getElementById('customer-email').value;
             const password = document.getElementById('customer-password').value;
-            
             try {
-                const userCredential = await signInWithEmailAndPassword(auth, email, password);
+                const userCredential = await signInWithEmailAndPassword(clientAuth, email, password);
                 const user = userCredential.user;
-                
+                clientUser = user;
                 document.getElementById('customer-name-display').textContent = user.displayName || 'Cliente';
                 const balance = await loadBalance(user.uid);
                 document.getElementById('display-current-balance').textContent = `$${balance.toFixed(2)}`;
-                
                 switchDynamicView('payment-confirmation-view');
-                
             } catch (error) {
                 console.error("Error de inicio de sesión del cliente:", error);
                 showMessage('Error de inicio de sesión del cliente: Credenciales incorrectas.', 'error');
@@ -1181,92 +1183,76 @@
         });
 
         cancelLoginBtn.addEventListener('click', () => {
-             signOut(auth).catch(() => {});
-             showMessage('Login cancelado. Vuelva a intentar o seleccione otro método.', 'info');
-             switchDynamicView('payment-method-view'); 
+            if (clientAuth.currentUser) signOut(clientAuth).catch(() => {});
+            clientUser = null;
+            showMessage('Login cancelado. Vuelva a intentar o seleccione otro método.', 'info');
+            switchDynamicView('payment-method-view');
         });
 
         confirmPaymentBtn.addEventListener('click', async () => {
-            const customerUser = auth.currentUser;
-            
+            const customerUser = clientAuth.currentUser;
             // El monto a cobrar es siempre el total
-            const chargeAmount = totalAmount; 
-            
-            if (!customerUser || chargeAmount <= 0) { 
+            const chargeAmount = totalAmount;
+            if (!customerUser || chargeAmount <= 0) {
                 showCompletionScreen(false, 'Error', 'No hay un cliente autenticado o un monto válido para HUG Bank.');
                 return;
             }
             if (!businessUser) {
-                 showCompletionScreen(false, 'Error', 'Sesión del negocio perdida. Por favor, reinicie.');
-                 return;
+                showCompletionScreen(false, 'Error', 'Sesión del negocio perdida. Por favor, reinicie.');
+                return;
             }
-            
             const customerId = customerUser.uid;
-            const businessId = businessUser.uid; 
-            
+            const businessId = businessUser.uid;
             const customerRef = doc(db, `artifacts/${appId}/users/${customerId}/account/data`);
             const businessRef = doc(db, `artifacts/${appId}/users/${businessId}/account/data`);
-
             try {
                 await runTransaction(db, async (transaction) => {
                     const customerDoc = await transaction.get(customerRef);
                     if (!customerDoc.exists()) throw new Error("Cuenta del cliente no existe.");
-                    
                     const businessDoc = await transaction.get(businessRef);
-                    
                     const customerBalance = customerDoc.data().balance;
-                    if (customerBalance < chargeAmount) { 
+                    if (customerBalance < chargeAmount) {
                         throw new Error("Saldo insuficiente en la cuenta del cliente.");
                     }
-
                     const newCustomerBalance = customerBalance - chargeAmount;
                     let currentBusinessBalance = businessDoc.exists() ? businessDoc.data().balance : 0;
-                    const newBusinessBalance = currentBusinessBalance + chargeAmount; 
-
+                    const newBusinessBalance = currentBusinessBalance + chargeAmount;
                     transaction.update(customerRef, { balance: newCustomerBalance });
-
                     if (!businessDoc.exists()) {
-                         transaction.set(businessRef, { 
-                            balance: newBusinessBalance, 
-                            name: businessUser.name, 
-                            email: customerUser.email, 
-                            creditScore: { average: 5.0, count: 0 } 
-                         });
+                        transaction.set(businessRef, {
+                            balance: newBusinessBalance,
+                            name: businessUser.name,
+                            email: customerUser.email,
+                            creditScore: { average: 5.0, count: 0 }
+                        });
                     } else {
                         transaction.update(businessRef, { balance: newBusinessBalance });
                     }
                 });
-                
                 // NOTA: Usar la 'transactionDescription' que se guardó al seleccionar el método de pago
-                
                 const transactionDetails = {
-                    amount: totalAmount, 
+                    amount: totalAmount,
                     hugBankAmount: totalAmount, // Solo HUG Bank
                     cashAmount: 0, // No hay efectivo
-                    description: transactionDescription, 
-                    senderId: customerId, 
+                    description: transactionDescription,
+                    senderId: customerId,
                     recipientId: businessId,
                     type: 'pos-payment-sent', // Tipo simple para el cliente
                     senderName: customerUser.displayName || 'Cliente',
                     recipientName: businessUser.name,
                     items: cart // ESENCIAL para las estadísticas
                 };
-
                 // Transacción para el Cliente (Salida de dinero)
-                await createTransaction(customerId, transactionDetails); 
-                
+                await createTransaction(customerId, transactionDetails);
                 // Transacción para el Negocio (Entrada de dinero)
-                transactionDetails.type = 'pos-payment-received'; 
+                transactionDetails.type = 'pos-payment-received';
                 transactionDetails.senderName = customerUser.displayName || 'Cliente'; // Asegurar el nombre en el lado del negocio
                 await createTransaction(businessId, transactionDetails);
-                
                 const finalMessage = `Se cobró $${chargeAmount.toFixed(2)} al cliente y se acreditó al negocio. ${transactionDescription ? '(' + transactionDescription + ')' : ''}`;
-
                 showCompletionScreen(true, '¡Pago Exitoso!', finalMessage);
-
             } catch (e) {
                 console.error("Fallo de Transacción:", e.message);
-                let msg = e.message.includes("Saldo insuficiente") 
+                let msg = e.message.includes("Saldo insuficiente")
                     ? "Saldo insuficiente para cubrir el cobro de HUG Bank."
                     : `Fallo la transacción: ${e.message}`;
                 showCompletionScreen(false, 'Pago Fallido', msg);
@@ -1274,7 +1260,12 @@
         });
         
         cancelPaymentBtn.addEventListener('click', () => {
-             showCompletionScreen(false, 'Transacción Cancelada', 'El cliente decidió cancelar el pago.');
+            // Cerrar sesión del cliente si cancela
+            if (typeof clientAuth !== 'undefined' && clientAuth.currentUser) {
+                clientAuth.signOut().catch(() => {});
+                clientUser = null;
+            }
+            showCompletionScreen(false, 'Transacción Cancelada', 'El cliente decidió cancelar el pago.');
         });
         
         newTransactionBtn.addEventListener('click', () => {
@@ -1282,45 +1273,72 @@
         });
 
 
-        // --- CONTROL DE ESTADO DE AUTENTICACIÓN ---
-        
-        onAuthStateChanged(auth, async (user) => {
-            if (user && businessUser && user.uid === businessUser.uid) {
-                document.getElementById('business-name-display').textContent = user.displayName || businessUser.name;
-                businessUser.name = user.displayName || businessUser.name; 
-                
-                productCatalog = await loadProductCatalogFromFirestore(); 
-                updateProductListDisplay(); 
-                
-                // Después de iniciar sesión, se vuelve a la vista de catálogo
-                switchDynamicView('product-catalog-view');
-                
-            } else if (user && businessUser && user.uid !== businessUser.uid && paymentMethod === 'hug-bank' && totalAmount > 0) {
-                
-                const balance = await loadBalance(user.uid);
-                document.getElementById('customer-name-display').textContent = user.displayName || 'Cliente';
-                document.getElementById('display-current-balance').textContent = `$${balance.toFixed(2)}`;
-                document.getElementById('display-charge-amount-confirm').textContent = `$${totalAmount.toFixed(2)}`;
-                
-                // Si el cliente está logueado, se va a la confirmación
-                switchDynamicView('payment-confirmation-view');
-            
-            } else if (!user && businessUser) {
-                // Si se cierra la sesión del cliente (después del pago o cancelado)
-                if (totalAmount > 0 && paymentMethod === null) {
-                    // Si el usuario cancela el login, vuelve a la selección de pago
-                    switchDynamicView('payment-method-view');
-                } else {
-                    switchDynamicView('product-catalog-view');
-                }
 
-            } else {
-                // Sin ningún usuario logueado, ir al login de negocio
-                 switchAppView('business-login');
+        // --- CONTROL DE SESIÓN DE NEGOCIO Y CLIENTE ---
+        async function restoreBusinessSession() {
+            // Si hay usuario guardado en localStorage, restaurar datos mínimos y saltar login
+            const saved = localStorage.getItem('hugbank-business-user');
+            if (saved) {
+                try {
+                    const data = JSON.parse(saved);
+                    // Comprobar si sigue autenticado
+                    if (!auth.currentUser || auth.currentUser.uid !== data.uid) {
+                        // Forzar re-autenticación silenciosa si es posible (no hay refresh token, así que solo restaurar datos UI)
+                        businessUser = { uid: data.uid, name: data.name, email: data.email };
+                        document.getElementById('business-name-display').textContent = businessUser.name;
+                        productCatalog = await loadProductCatalogFromFirestore();
+                        updateCartDisplay();
+                        updateProductListDisplay();
+                        switchDynamicView('product-catalog-view');
+                        return true;
+                    } else {
+                        businessUser = { uid: auth.currentUser.uid, name: auth.currentUser.displayName || data.name, email: auth.currentUser.email };
+                        document.getElementById('business-name-display').textContent = businessUser.name;
+                        productCatalog = await loadProductCatalogFromFirestore();
+                        updateCartDisplay();
+                        updateProductListDisplay();
+                        switchDynamicView('product-catalog-view');
+                        return true;
+                    }
+                } catch (e) {
+                    localStorage.removeItem('hugbank-business-user');
+                }
+            }
+            return false;
+        }
+
+        // No usar onAuthStateChanged para cambiar de vista, solo para actualizar datos si cambia el usuario de negocio
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                businessUser = { uid: user.uid, name: user.displayName || 'Negocio', email: user.email };
+                localStorage.setItem('hugbank-business-user', JSON.stringify(businessUser));
+                document.getElementById('business-name-display').textContent = businessUser.name;
+                productCatalog = await loadProductCatalogFromFirestore();
+                updateProductListDisplay();
             }
         });
-        
-        switchAppView('business-login'); 
+
+        // Cliente: solo actualizar datos de UI, nunca cerrar sesión de negocio
+        onAuthStateChanged(clientAuth, async (user) => {
+            if (user) {
+                clientUser = user;
+                document.getElementById('customer-name-display').textContent = user.displayName || 'Cliente';
+                const balance = await loadBalance(user.uid);
+                document.getElementById('display-current-balance').textContent = `$${balance.toFixed(2)}`;
+                document.getElementById('display-charge-amount-confirm').textContent = `$${totalAmount.toFixed(2)}`;
+                switchDynamicView('payment-confirmation-view');
+            } else {
+                clientUser = null;
+            }
+        });
+
+        // Al cargar la página, restaurar sesión de negocio si existe
+        (async () => {
+            const restored = await restoreBusinessSession();
+            if (!restored) {
+                switchAppView('business-login');
+            }
+        })();
 
     </script>
 </body>
