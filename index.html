@@ -601,6 +601,37 @@
             const transactionsRef = collection(db, `artifacts/${appId}/users/${userId}/transactions`);
             return await addDoc(transactionsRef, { ...transactionData, timestamp: serverTimestamp() });
         }
+
+        // --- FUNCIÓN: Cancelar una solicitud pública de préstamo (propia) - TOP-LEVEL ---
+        async function cancelLoanRequest(requestDocId) {
+            if (!currentUser) throw new Error('Usuario no autenticado.');
+            if (!requestDocId) throw new Error('ID de solicitud inválido.');
+
+            const requestRef = doc(db, `artifacts/${appId}/loan-requests/${requestDocId}`);
+            try {
+                await runTransaction(db, async (transaction) => {
+                    const reqDoc = await transaction.get(requestRef);
+                    if (!reqDoc.exists()) throw new Error('Solicitud no encontrada.');
+                    const data = reqDoc.data();
+                    // Solo el creador (debtorId) puede cancelar una solicitud pendiente
+                    if (data.debtorId !== currentUser.uid) throw new Error('No tienes permiso para cancelar esta solicitud.');
+                    if (data.status !== 'pending') throw new Error('Solo se pueden cancelar solicitudes pendientes.');
+
+                    transaction.update(requestRef, {
+                        status: 'cancelled',
+                        cancelledDate: serverTimestamp(),
+                        cancelledBy: currentUser.uid
+                    });
+                });
+
+                showMessage('Solicitud de préstamo cancelada correctamente.', 'success');
+                return true;
+            } catch (e) {
+                console.error('Error al cancelar la solicitud:', e);
+                showMessage(`Error al cancelar la solicitud: ${e.message}`, 'error');
+                return false;
+            }
+        }
         
         // --- FUNCIÓN ADICIONAL: Cancelar Préstamo por Prestamista (CON PENALIDAD DEL 5% DEL TOTAL) ---
         async function cancelLoanByLender(lenderTransactionId, recipientId) {
@@ -1522,6 +1553,8 @@
                  details = `<p class="text-xs text-gray-600">Penalidad: $${transaction.penaltyAmount.toFixed(2)}</p>`;
             }
             
+                    // (cancelLoanRequest moved to top-level)
+
             // Botón de Puntuar: Aparece si está pagado o penalizado, y no ha sido puntuado
             // *** ESTA ES LA LÍNEA QUE DEBE SER CORRECTA ***
             if (isDebtList && (status === 'completed-paid' || status === 'completed-paid-penalized') && transaction.scoreGiven !== true) {
@@ -1687,26 +1720,30 @@
         
         const currentUserId = userId; 
         
-        // 2. LÍNEA CLAVE: FILTRADO en el lado del cliente (JavaScript)
-        // Crea un nuevo array que excluye las solicitudes donde el 'debtorId' es el del usuario logueado.
-        const filteredRequests = querySnapshot.docs.filter(doc => {
-            return doc.data().debtorId !== currentUserId;
-        });
+        // 2. Incluimos todas las solicitudes en la UI y diferenciamos las propias
+        const docs = querySnapshot.docs;
 
-        if (filteredRequests.length === 0) {
+        if (docs.length === 0) {
             loanRequestsList.innerHTML = '<p class="text-gray-500 text-sm text-center">No hay solicitudes de préstamo activas en este momento.</p>';
             return;
         }
 
-        // 3. Iteramos sobre el arreglo ya filtrado (filteredRequests)
-        filteredRequests.forEach((doc) => { 
+        // 3. Separar en solicitudes públicas (no creadas por el usuario) y 'Mis solicitudes'
+        const publicRequests = docs.filter(d => d.data().debtorId !== currentUserId);
+        const myRequests = docs.filter(d => d.data().debtorId === currentUserId);
+
+        // Si no hay públicas ni propias, mostrar mensaje
+        if (publicRequests.length === 0 && myRequests.length === 0) {
+            loanRequestsList.innerHTML = '<p class="text-gray-500 text-sm text-center">No hay solicitudes de préstamo activas en este momento.</p>';
+            return;
+        }
+
+        // Renderizar solicitudes públicas primero
+        publicRequests.forEach((doc) => {
             const requestDocId = doc.id;
             const requestData = doc.data();
-            
-            // Lógica para mostrar las estrellas del Credit Score
             const score = requestData.creditScoreSnapshot || 5.0;
-            const starHtml = Array(Math.round(score)).fill('★').join('') + 
-                             Array(5 - Math.round(score)).fill('☆').join('');
+            const starHtml = Array(Math.round(score)).fill('★').join('') + Array(5 - Math.round(score)).fill('☆').join('');
 
             const item = document.createElement('li');
             item.className = 'bg-gray-50 p-3 rounded-lg border border-gray-200';
@@ -1723,14 +1760,44 @@
                         <p class="text-xs text-yellow-500 mt-1" title="Score de Crédito">${starHtml} (${score.toFixed(1)})</p>
                     </div>
                 </div>
-                <button class="lend-on-request-btn mt-3 w-full py-2 px-4 rounded-full text-md font-semibold text-white btn-primary"
-                        data-id="${requestDocId}">
-                    Aceptar Solicitud y Prestar
-                </button>
+                <button class="lend-on-request-btn mt-3 w-full py-2 px-4 rounded-full text-md font-semibold text-white btn-primary" data-id="${requestDocId}">Aceptar Solicitud y Prestar</button>
             `;
-            
             loanRequestsList.appendChild(item);
         });
+
+        // Separador y 'Mis solicitudes' (si existen)
+        if (myRequests.length > 0) {
+            const header = document.createElement('li');
+            header.className = 'text-sm font-semibold text-gray-700 mt-3 mb-1';
+            header.innerHTML = '<p class="underline">Mis solicitudes</p>';
+            loanRequestsList.appendChild(header);
+
+            myRequests.forEach((doc) => {
+                const requestDocId = doc.id;
+                const requestData = doc.data();
+                const score = requestData.creditScoreSnapshot || 5.0;
+                const starHtml = Array(Math.round(score)).fill('★').join('') + Array(5 - Math.round(score)).fill('☆').join('');
+
+                const item = document.createElement('li');
+                item.className = 'bg-gray-50 p-3 rounded-lg border border-gray-200';
+                item.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="font-bold text-lg text-red-600">$${requestData.amount.toFixed(2)}</p>
+                            <p class="text-xs text-gray-500">Deudor: ${requestData.debtorName}</p>
+                            <p class="text-xs text-gray-500 break-all">ID: ${requestData.debtorId}</p>
+                            <p class="text-xs text-blue-600 mt-1">${requestData.description || 'Sin descripción'}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-sm font-semibold text-green-700">${requestData.interestRate.toFixed(2)}% Int.</p>
+                            <p class="text-xs text-yellow-500 mt-1" title="Score de Crédito">${starHtml} (${score.toFixed(1)})</p>
+                        </div>
+                    </div>
+                    <button class="cancel-request-btn mt-3 w-full py-2 px-4 rounded-full text-md font-semibold text-white bg-red-500 hover:bg-red-600 transition" data-id="${requestDocId}">Cancelar Solicitud</button>
+                `;
+                loanRequestsList.appendChild(item);
+            });
+        }
         
         // Listener para Aceptar Oferta (Prestar)
         loanRequestsList.querySelectorAll('.lend-on-request-btn').forEach(button => {
@@ -1740,6 +1807,19 @@
                 if (requestDoc.exists()) {
                     // Se muestra diálogo de confirmación en lendOnRequest
                     await lendOnRequest(docId, requestDoc.data());
+                }
+            });
+        });
+        // Listener para Cancelar Solicitud (propias)
+        loanRequestsList.querySelectorAll('.cancel-request-btn').forEach(button => {
+            button.addEventListener('click', async (e) => {
+                const docId = button.dataset.id;
+                if (!docId) return;
+                if (!confirm('¿Deseas cancelar esta solicitud de préstamo? Esta acción no se puede deshacer.')) return;
+                try {
+                    await cancelLoanRequest(docId);
+                } catch (err) {
+                    console.error('Error al cancelar la solicitud desde el listener:', err);
                 }
             });
         });
